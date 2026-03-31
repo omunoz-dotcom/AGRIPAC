@@ -264,14 +264,26 @@
             <button onclick="logout()" class="text-[9px] font-black uppercase text-red-500 bg-red-50 px-4 py-2 rounded-xl">Cerrar Sesión</button>
         </header>
 
-        <nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[77px] z-30">
-            <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard</button>
-            <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In)</button>
-            <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Báscula</button>
-            <button data-sec="secDist" onclick="mostrarSeccion('secDist', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Distribución</button>
-            <button data-sec="secCarga" onclick="mostrarSeccion('secCarga', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Carga</button>
-            <button data-sec="secGaritaOut" onclick="mostrarSeccion('secGaritaOut', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (Out)</button>
-        </nav>
+<nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[77px] z-30">
+    <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">
+        Dashboard
+    </button>
+    <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">
+        Garita (In) <span id="badgeGarita" class="ml-1 bg-slate-100 px-2 py-0.5 rounded-full text-[9px]">0</span>
+    </button>
+    <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">
+        Báscula <span id="badgeBascula" class="ml-1 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[9px]">0</span>
+    </button>
+    <button data-sec="secDist" onclick="mostrarSeccion('secDist', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">
+        Distribución <span id="badgeDist" class="ml-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-[9px]">0</span>
+    </button>
+    <button data-sec="secCarga" onclick="mostrarSeccion('secCarga', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">
+        Carga <span id="badgeCarga" class="ml-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[9px]">0</span>
+    </button>
+    <button data-sec="secGaritaOut" onclick="mostrarSeccion('secGaritaOut', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">
+        Garita (Out) <span id="badgeOut" class="ml-1 bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-[9px]">0</span>
+    </button>
+</nav>
 
         <main class="flex-grow overflow-y-auto p-6">
             <div id="secDashboard" class="seccion-app hidden max-w-4xl mx-auto">
