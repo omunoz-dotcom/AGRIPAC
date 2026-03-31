@@ -9,19 +9,18 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700;800;900&display=swap');
-        :root { --agripac-blue: #003399; --agripac-gray-bg: #F4F7FA; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
-        .tab-active { border-bottom: 4px solid var(--agripac-blue); color: var(--agripac-blue) !important; font-weight: 800; }
-        .hidden-auth { display: none !important; }
-        .modal-blur { background: rgba(0, 51, 153, 0.1); backdrop-filter: blur(8px); display: none; }
-        .animate-fade { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        :root { --agripac-blue: #003399; --bg-gray: #F4F7FA; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-gray); margin: 0; padding: 0; }
+        .tab-active { border-bottom: 4px solid var(--agripac-blue); color: var(--agripac-blue) !important; font-weight: 700; }
+        .modal-overlay { background: rgba(0, 51, 153, 0.2); backdrop-filter: blur(5px); display: none; }
+        .animate-fade { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .hidden-auth { display: none !important; }
     </style>
-
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyANUkQLUGrMh4ET1LdyYCucuZqqVKR39u4",
@@ -40,13 +39,13 @@
 
         let modalAction = null;
 
-        // SEGURIDAD
+        // SEGURIDAD POR PINES
         const USERS = {
             "1111": ["secGarita", "secGaritaOut"],
             "2222": ["secBascula"],
             "3333": ["secDist"],
             "4444": ["secCarga"],
-            "0000": ["secGarita", "secBascula", "secDist", "secCarga", "secGaritaOut", "secDashboard"]
+            "0000": ["secDashboard", "secGarita", "secBascula", "secDist", "secCarga", "secGaritaOut"]
         };
 
         window.login = () => {
@@ -59,7 +58,7 @@
 
         window.onload = () => {
             const s = localStorage.getItem('agripac_session');
-            if(s) {
+            if(s && USERS[s]) {
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
                 const accesos = USERS[s];
@@ -69,9 +68,46 @@
             }
         };
 
-        window.logout = () => { localStorage.removeItem('agripac_session'); location.reload(); };
+        // --- LÓGICA DASHBOARD ---
+        async function cargarDashboard() {
+            try {
+                const res = await fetch(URL_SHEET_CSV);
+                const csv = await res.text();
+                const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1);
+                
+                onValue(vehiculosRef, (snapshot) => {
+                    const enPlanta = snapshot.val() || {};
+                    const listaPlan = document.getElementById('lDashboard');
+                    listaPlan.innerHTML = '';
+                    let contIngresos = 0;
 
-        // NAVEGACIÓN
+                    filasPlan.forEach(f => {
+                        if(!f[0]) return;
+                        const idPlan = f[0].trim().toUpperCase();
+                        const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
+                        if(vReal) contIngresos++;
+
+                        listaPlan.innerHTML += `
+                            <div class="flex items-center justify-between p-4 border-b border-slate-100 bg-white">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-lg">${vReal ? '✅' : '⏳'}</span>
+                                    <div>
+                                        <p class="font-bold text-slate-800 text-sm">${f[2]} <span class="font-normal text-slate-400">#${idPlan}</span></p>
+                                        <p class="text-[10px] text-slate-500 uppercase font-bold">${f[8]}</p>
+                                    </div>
+                                </div>
+                                <div class="text-right text-[10px] font-black uppercase ${vReal ? 'text-blue-700' : 'text-slate-300'}">
+                                    ${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}
+                                </div>
+                            </div>`;
+                    });
+                    document.getElementById('dashTotal').innerText = filasPlan.length;
+                    document.getElementById('dashIng').innerText = contIngresos;
+                });
+            } catch(e) { console.error("Error Dashboard", e); }
+        }
+
+        // --- NAVEGACIÓN ---
         window.mostrarSeccion = (id, el) => {
             document.querySelectorAll('.seccion-app').forEach(s => s.classList.add('hidden'));
             document.getElementById(id).classList.remove('hidden');
@@ -79,51 +115,23 @@
             if(el) el.classList.add('tab-active');
         };
 
-        // DASHBOARD LÓGICA
-        async function cargarDashboard() {
-            const res = await fetch(URL_SHEET_CSV);
-            const csv = await res.text();
-            const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1);
-            
-            onValue(vehiculosRef, (snapshot) => {
-                const enPlanta = snapshot.val() || {};
-                const listaPlan = document.getElementById('listaPlanDashboard');
-                listaPlan.innerHTML = '';
-                
-                let contIngresados = 0;
+        // --- MODALES ---
+        window.abrirModal = (titulo, etiqueta, callback) => {
+            document.getElementById('modalTitle').innerText = titulo;
+            document.getElementById('modalLabel').innerText = etiqueta;
+            document.getElementById('modalInput').value = '';
+            document.getElementById('mainModal').style.display = 'flex';
+            modalAction = callback;
+        };
+        window.cerrarModal = () => document.getElementById('mainModal').style.display = 'none';
+        window.confirmarAccion = () => {
+            const val = document.getElementById('modalInput').value;
+            if(!val) return;
+            modalAction(val);
+            cerrarModal();
+        };
 
-                filasPlan.forEach(f => {
-                    if(!f[0]) return;
-                    const idPlan = f[0].trim().toUpperCase();
-                    const placaPlan = f[2];
-                    const areaPlan = f[8];
-                    
-                    // Buscar si este ID de la planificación ya está en Firebase
-                    const vehiculoReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
-                    
-                    const statusIcon = vehiculoReal ? '✅' : '⏳';
-                    const statusText = vehiculoReal ? `<span class="text-green-600 font-bold">${vehiculoReal.estado}</span>` : '<span class="text-slate-400 font-medium">No ingresado</span>';
-                    if(vehiculoReal) contIngresados++;
-
-                    listaPlan.innerHTML += `
-                        <div class="flex items-center justify-between p-3 border-b border-slate-100 text-[11px]">
-                            <div class="flex items-center gap-3">
-                                <span>${statusIcon}</span>
-                                <div>
-                                    <p class="font-black text-slate-800">${placaPlan} <span class="font-normal text-slate-400">#${idPlan}</span></p>
-                                    <p class="text-[9px] text-slate-500 uppercase">${areaPlan}</p>
-                                </div>
-                            </div>
-                            <div class="text-right uppercase">${statusText}</div>
-                        </div>`;
-                });
-
-                document.getElementById('dashTotal').innerText = filasPlan.length;
-                document.getElementById('dashIngresados').innerText = contIngresados;
-            });
-        }
-
-        // PROCESOS (Simplificados para brevedad)
+        // --- PROCESOS ---
         window.registrarIngreso = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value;
             if(!id) return;
@@ -131,57 +139,86 @@
             const csv = await res.text();
             const f = csv.split("\n").map(r => r.split(",")).find(row => row[0].trim().toUpperCase() === id.trim().toUpperCase());
             if(f) {
-                push(vehiculosRef, { codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(), estado: 'PESAJE_ENTRADA', anden: '-', pEntrada:0, pSalida:0 });
+                push(vehiculosRef, {
+                    codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(),
+                    estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada: 0, pSalida: 0, precintos: '-'
+                });
                 document.getElementById('inputGarita').value = '';
-            } else alert("NO PLANIFICADO");
+            } else { alert("ID No Planificado"); }
         };
 
-        // RENDERIZADOS DE OTROS MÓDULOS (Omitidos por espacio, pero funcionales en el código completo)
+        window.actualizarEstado = (id, data) => update(ref(db, `vehiculos/${id}`), data);
+        window.darSalidaFinal = (key) => { if(confirm("¿Salida física?")) remove(ref(db, `vehiculos/${key}`)); };
+
+        // --- MONITOR ---
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
-            const L = { B: document.getElementById('lBascula'), D: document.getElementById('lDist'), C: document.getElementById('lCarga'), G: document.getElementById('lGaritaOut') };
-            Object.values(L).forEach(c => c.innerHTML = '');
+            const sections = { 'secBascula': document.getElementById('lBascula'), 'secDist': document.getElementById('lDist'), 'secCarga': document.getElementById('lCarga'), 'secGaritaOut': document.getElementById('lGaritaOut') };
+            Object.values(sections).forEach(s => s.innerHTML = '');
             if(!data) return;
+
             Object.keys(data).forEach(key => {
                 const v = data[key];
-                const card = (btn) => `<div class="bg-white border p-4 rounded-xl mb-3 shadow-sm"><h3 class="text-lg font-black italic">${v.placa}</h3><p class="text-[10px] uppercase mb-3">${v.chofer} | ${v.area}</p>${btn}</div>`;
-                // Lógica de dibujo de tarjetas según estado... (Igual a versiones anteriores)
-                if(v.estado === 'PESAJE_ENTRADA') L.B.innerHTML += card(`<button onclick="actualizar('${key}', {estado:'DIST_DOCS_CARGA'})" class="w-full bg-[#003399] text-white py-2 rounded text-[10px] font-bold uppercase">Registrar Peso</button>`);
-                // ... resto de estados
+                const card = (btnHTML) => `
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 mb-4 shadow-sm animate-fade">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: ${v.codigo}</span>
+                            <span class="text-[8px] px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold uppercase tracking-tighter">${v.estado.replace(/_/g,' ')}</span>
+                        </div>
+                        <h3 class="text-xl font-bold text-slate-800 mb-1 italic">${v.placa}</h3>
+                        <p class="text-[10px] text-slate-500 mb-4 font-bold uppercase">${v.chofer} | ${v.area}</p>
+                        ${v.anden !== '-' ? `<p class="text-[10px] mb-4 font-black text-blue-900 uppercase">📍 ANDÉN: ${v.anden}</p>` : ''}
+                        ${btnHTML}
+                    </div>`;
+
+                if(v.estado === 'PESAJE_ENTRADA') sections.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO ENTRADA (KG)', (v)=>actualizarEstado('${key}', {pEntrada:v, estado:'DIST_DOCS_CARGA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest shadow-md">Registrar Peso</button>`);
+                else if(v.estado === 'DIST_DOCS_CARGA') sections.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGA_ASIGNAR_ANDEN'})" class="w-full bg-slate-700 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Entregar Docs Carga</button>`);
+                else if(v.estado === 'CARGA_ASIGNAR_ANDEN') sections.secCarga.innerHTML += card(`<button onclick="abrirModal('CARGA', 'NÚMERO DE ANDÉN', (v)=>actualizarEstado('${key}', {anden:v, estado:'CARGA_LISTO_INICIO'}))" class="w-full bg-slate-800 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Asignar Andén</button>`);
+                else if(v.estado === 'CARGA_LISTO_INICIO') sections.secCarga.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Iniciar Carga</button>`);
+                else if(v.estado === 'CARGANDO') {
+                    const min = Math.floor((Date.now() - v.inicioCarga)/60000);
+                    sections.secCarga.innerHTML += card(`<div class="flex gap-2"><div class="flex-1 bg-red-50 text-red-600 text-[10px] font-black flex items-center justify-center rounded">${min} MIN</div><button onclick="abrirModal('CARGA', 'NÚMERO PRECINTOS', (v)=>actualizarEstado('${key}', {precintos:v, estado:'DIST_DOCS_SALIDA'}))" class="flex-[2] bg-green-600 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Terminar Carga</button></div>`);
+                }
+                else if(v.estado === 'DIST_DOCS_SALIDA') sections.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Entregar Docs Salida</button>`);
+                else if(v.estado === 'PESAJE_SALIDA') sections.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO SALIDA (KG)', (v)=>actualizarEstado('${key}', {pSalida:v, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Peso Salida</button>`);
+                else if(v.estado === 'LISTO_SALIDA') sections.secGaritaOut.innerHTML += card(`<button onclick="darSalidaFinal('${key}')" class="w-full bg-black text-white py-4 rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-xl">Confirmar Salida Física</button>`);
             });
         });
 
-        window.actualizar = (id, data) => update(ref(db, `vehiculos/${id}`), data);
-        window.borrar = (id) => { if(confirm("¿CONFIRMAR SALIDA?")) remove(ref(db, `vehiculos/${id}`)); };
-
+        window.scan = () => {
+            const h = new Html5Qrcode("reader");
+            document.getElementById('rc').classList.remove('hidden');
+            h.start({facingMode:"environment"}, {fps:10, qrbox:250}, (t)=>{ h.stop(); document.getElementById('rc').classList.add('hidden'); registrarIngreso(t); });
+        };
+        window.logout = () => { localStorage.removeItem('agripac_session'); location.reload(); };
     </script>
 </head>
-<body class="bg-slate-50">
+<body>
 
     <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
-        <div class="absolute inset-0 z-0"><img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover"><div class="absolute inset-0 bg-blue-950/50"></div></div>
+        <div class="absolute inset-0 z-0"><img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover"><div class="absolute inset-0 bg-blue-950/40"></div></div>
         <div class="relative z-10 w-full h-full flex items-center p-8 lg:p-20">
             <div class="w-1/2 text-white hidden lg:block pr-20">
-                <h1 class="text-6xl font-black tracking-tighter leading-tight">CONTROL DE PATIO <span class="text-[#FFB800]">AGRIPAC</span></h1>
-                <p class="text-xl mt-4">Gestión en tiempo real de flota y despachos.</p>
+                <h1 class="text-6xl font-black mb-4">SISTEMA <span class="text-amber-500">AGRIPAC</span></h1>
+                <p class="text-xl">Gestión de Patio y Logística de Despachos.</p>
             </div>
             <div class="w-full lg:w-1/2 flex justify-end">
-                <div class="bg-white p-12 rounded-3xl shadow-2xl w-full max-w-md animate-fade">
-                    <h2 class="text-4xl font-black text-slate-900 mb-8 italic">Sign In</h2>
-                    <input type="password" id="loginPassword" placeholder="PIN de Acceso" class="w-full p-5 bg-slate-50 border rounded-xl mb-6 text-lg tracking-widest font-black focus:border-[#003399] outline-none">
-                    <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-xl font-black uppercase text-xs shadow-xl hover:bg-blue-800 transition-all">Ingresar</button>
+                <div class="bg-white p-12 rounded-3xl shadow-2xl w-full max-w-lg">
+                    <h2 class="text-4xl font-black text-slate-900 mb-8 italic">Login</h2>
+                    <input type="password" id="loginPassword" placeholder="PIN de Acceso" class="w-full p-5 bg-slate-50 border rounded-xl mb-6 text-center font-black tracking-widest outline-none focus:border-[#003399]">
+                    <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-xl font-black uppercase text-xs shadow-xl">Sign In</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="mainApp" class="hidden h-screen flex flex-col">
-        <header class="bg-white border-b py-4 px-6 flex justify-between items-center">
-            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-8">
-            <button onclick="logout()" class="text-[8px] font-black uppercase text-red-500 bg-red-50 px-3 py-2 rounded-lg">Logout</button>
+    <div id="mainApp" class="hidden">
+        <header class="bg-white border-b py-6 px-4 flex flex-col items-center sticky top-0 z-40">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-10 mb-2">
+            <button onclick="logout()" class="absolute right-4 top-1/2 -translate-y-1/2 text-[8px] font-black text-red-500 bg-red-50 px-3 py-2 rounded-lg">LOGOUT</button>
         </header>
 
-        <nav class="bg-white border-b flex overflow-x-auto no-scrollbar">
+        <nav class="sticky top-[96px] z-30 bg-white border-b flex overflow-x-auto no-scrollbar">
             <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard</button>
             <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In)</button>
             <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Báscula</button>
@@ -190,38 +227,44 @@
             <button data-sec="secGaritaOut" onclick="mostrarSeccion('secGaritaOut', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (Out)</button>
         </nav>
 
-        <main class="flex-grow overflow-y-auto p-6">
-            <div id="secDashboard" class="seccion-app animate-fade max-w-4xl mx-auto hidden">
-                <div class="grid grid-cols-2 gap-4 mb-8">
-                    <div class="bg-[#003399] text-white p-6 rounded-3xl">
-                        <p class="text-[10px] font-bold uppercase opacity-60">Planificados Hoy</p>
-                        <p id="dashTotal" class="text-4xl font-black">0</p>
-                    </div>
-                    <div class="bg-white border p-6 rounded-3xl">
-                        <p class="text-[10px] font-bold uppercase text-slate-400">Ingresados a Planta</p>
-                        <p id="dashIngresados" class="text-4xl font-black text-[#003399]">0</p>
-                    </div>
+        <main class="max-w-xl mx-auto p-6 pb-24">
+            <div id="secDashboard" class="seccion-app animate-fade hidden">
+                <div class="grid grid-cols-2 gap-4 mb-6 text-center">
+                    <div class="bg-blue-900 text-white p-4 rounded-2xl"><p class="text-[9px] font-bold uppercase opacity-60">Planificados</p><p id="dashTotal" class="text-3xl font-black">0</p></div>
+                    <div class="bg-white border p-4 rounded-2xl"><p class="text-[9px] font-bold uppercase text-slate-400">Ingresados</p><p id="dashIng" class="text-3xl font-black text-blue-900">0</p></div>
                 </div>
-                <div class="bg-white border rounded-3xl overflow-hidden">
-                    <div class="p-4 bg-slate-50 border-b font-bold text-[10px] uppercase text-slate-500">Planificación del día vs Estatus Real</div>
-                    <div id="listaPlanDashboard" class="max-h-[400px] overflow-y-auto">
-                        </div>
-                </div>
+                <div id="lDashboard" class="bg-white border rounded-2xl overflow-hidden shadow-sm"></div>
             </div>
 
-            <div id="secGarita" class="seccion-app hidden max-w-xl mx-auto">
-                <div class="bg-white border p-8 rounded-3xl text-center shadow-sm">
-                    <button onclick="registrarIngreso()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-[10px]">Validar Acceso Manual</button>
-                    <input id="inputGarita" type="text" placeholder="ID MANUAL" class="w-full mt-4 p-4 border rounded-xl text-center font-black outline-none focus:border-[#003399]">
+            <div id="secGarita" class="seccion-app animate-fade">
+                <div class="bg-white border rounded-xl p-8 shadow-sm text-center">
+                    <button onclick="scan()" class="w-full bg-[#003399] text-white py-4 rounded font-bold mb-6 text-[10px] uppercase shadow-lg">Cámara Escáner</button>
+                    <input id="inputGarita" type="text" placeholder="ID MANUAL" class="w-full p-4 bg-slate-50 border rounded mb-4 text-center font-bold outline-none focus:border-[#003399] uppercase">
+                    <button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded font-bold uppercase text-[9px]">Validar Acceso</button>
                 </div>
             </div>
-
-            <div id="secBascula" class="seccion-app hidden max-w-xl mx-auto"><div id="lBascula"></div></div>
-            <div id="secDist" class="seccion-app hidden max-w-xl mx-auto"><div id="lDist"></div></div>
-            <div id="secCarga" class="seccion-app hidden max-w-xl mx-auto"><div id="lCarga"></div></div>
-            <div id="secGaritaOut" class="seccion-app hidden max-w-xl mx-auto"><div id="lGaritaOut"></div></div>
+            <div id="secBascula" class="seccion-app hidden"><div id="lBascula"></div></div>
+            <div id="secDist" class="seccion-app hidden"><div id="lDist"></div></div>
+            <div id="secCarga" class="seccion-app hidden"><div id="lCarga"></div></div>
+            <div id="secGaritaOut" class="seccion-app hidden"><div id="lGaritaOut"></div></div>
         </main>
     </div>
 
+    <div id="mainModal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-6 animate-fade">
+        <div class="bg-white w-full max-w-sm rounded-lg p-8 border-t-4 border-[#003399] shadow-2xl">
+            <h2 id="modalTitle" class="text-center font-bold text-slate-800 text-lg uppercase mb-1 tracking-tighter">TÍTULO</h2>
+            <p id="modalLabel" class="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-6">Instrucción</p>
+            <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded mb-8 text-center font-bold text-slate-800 focus:border-[#003399] outline-none uppercase">
+            <div class="flex gap-4">
+                <button onclick="cerrarModal()" class="flex-1 text-[9px] font-bold uppercase text-slate-400 tracking-widest">Cancelar</button>
+                <button onclick="confirmarAccion()" class="flex-1 bg-[#003399] text-white py-3 rounded font-bold text-[9px] uppercase">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rc" class="hidden fixed inset-0 bg-white z-[110] flex flex-col items-center justify-center p-6">
+        <div id="reader" class="w-full max-w-sm border rounded-lg overflow-hidden mb-8"></div>
+        <button onclick="location.reload()" class="text-[9px] font-bold uppercase text-slate-400 tracking-widest">Finalizar Cámara</button>
+    </div>
 </body>
 </html>
