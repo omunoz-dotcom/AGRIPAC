@@ -13,18 +13,18 @@
         body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-gray); margin: 0; overflow: hidden; }
         .tab-active { border-bottom: 4px solid var(--agripac-blue); color: var(--agripac-blue) !important; font-weight: 800; }
         .modal-overlay { background: rgba(0, 51, 153, 0.2); backdrop-filter: blur(5px); display: none; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
         .hidden-auth { display: none !important; }
-        .card-anim { animation: fadeIn 0.4s ease-out; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .animate-fade { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, push, onValue, update, remove, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         // ==========================================
-        // MÓDULO 0: CONFIGURACIÓN Y NÚCLEO
+        // MÓDULO 0: CONFIGURACIÓN NÚCLEO
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyANUkQLUGrMh4ET1LdyYCucuZqqVKR39u4",
@@ -41,81 +41,58 @@
         const vehiculosRef = ref(db, 'vehiculos');
         const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
 
-// ==========================================
-// MÓDULO 1: SEGURIDAD (VERSIÓN FINAL SIMPLIFICADA)
-// ==========================================
-import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        // ==========================================
+        // MÓDULO 1: SEGURIDAD (AUTH DINÁMICO)
+        // ==========================================
+        window.login = async () => {
+            const emailInput = document.getElementById('loginUser').value.trim().toLowerCase();
+            const passInput = document.getElementById('loginPassword').value.trim();
+            const btn = document.querySelector('button[onclick="login()"]');
 
-window.login = async () => {
-    const emailInput = document.getElementById('loginUser').value.trim().toLowerCase();
-    const passInput = document.getElementById('loginPassword').value.trim();
-    const btn = document.querySelector('button[onclick="login()"]');
+            btn.innerText = "VERIFICANDO...";
+            btn.disabled = true;
 
-    btn.innerText = "CARGANDO...";
-    btn.disabled = true;
+            try {
+                const dbRef = ref(db);
+                // Buscamos en "usuarios" (minúscula como tu última foto)
+                const snapshot = await get(child(dbRef, 'usuarios'));
+                
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    let encontrado = null;
 
-    try {
-        const dbRef = ref(getDatabase());
-        const snapshot = await get(child(dbRef, 'Usuarios'));
-        
-        if (snapshot.exists()) {
-            const data = snapshot.val();
-            let encontrado = null;
+                    Object.keys(data).forEach(key => {
+                        const u = data[key];
+                        if (u.email.trim().toLowerCase() === emailInput && u.pass.trim() === passInput) {
+                            encontrado = u;
+                        }
+                    });
 
-            // Buscamos dentro de cada ID (u1, u2...)
-            Object.keys(data).forEach(key => {
-                const u = data[key];
-                if (u.email.trim().toLowerCase() === emailInput && u.pass.trim() === passInput) {
-                    encontrado = u;
+                    if (encontrado) {
+                        localStorage.setItem('agripac_session', JSON.stringify(encontrado));
+                        location.reload();
+                    } else {
+                        alert("Correo o Clave incorrectos.");
+                        btn.innerText = "INGRESAR AL SISTEMA";
+                        btn.disabled = false;
+                    }
+                } else {
+                    alert("Error: No se encontró el nodo 'usuarios' en Firebase.");
+                    btn.innerText = "INGRESAR AL SISTEMA";
+                    btn.disabled = false;
                 }
-            });
-
-            if (encontrado) {
-                localStorage.setItem('agripac_session', JSON.stringify(encontrado));
-                alert("Acceso Correcto");
-                location.reload();
-            } else {
-                alert("ERROR: Correo o Clave no coinciden.\n\nEscribiste:\nUser: " + emailInput + "\nPass: " + passInput);
+            } catch (e) {
+                alert("Error de conexión: " + e.message);
                 btn.innerText = "INGRESAR AL SISTEMA";
                 btn.disabled = false;
             }
-        } else {
-            alert("ERROR: No existe la carpeta 'Usuarios' en Firebase.");
-            btn.innerText = "INGRESAR AL SISTEMA";
-            btn.disabled = false;
-        }
-    } catch (e) {
-        alert("Error de Conexión: " + e.message);
-        btn.innerText = "INGRESAR AL SISTEMA";
-        btn.disabled = false;
-    }
-};
+        };
 
-window.onload = () => {
-    const session = localStorage.getItem('agripac_session');
-    if (session) {
-        const user = JSON.parse(session);
-        document.getElementById('loginScreen').classList.add('hidden');
-        document.getElementById('mainApp').classList.remove('hidden');
-        
-        const roles = user.roles || [];
-        document.querySelectorAll('.tab-btn').forEach(b => { 
-            if(!roles.includes(b.dataset.sec)) b.classList.add('hidden-auth'); 
-        });
-        
-        const visible = document.querySelector('.tab-btn:not(.hidden-auth)');
-        if (visible) {
-            mostrarSeccion(visible.dataset.sec, visible);
-            if(roles.includes("secDashboard") && window.moduloDashboard) window.moduloDashboard.init();
-        }
-    }
-};
+        window.logout = () => { localStorage.removeItem('agripac_session'); location.reload(); };
 
         // ==========================================
-        // MÓDULO 2: INTERFAZ Y MODALES
+        // MÓDULO 2: INTERFAZ Y NAVEGACIÓN
         // ==========================================
-        let modalAction = null;
-
         window.mostrarSeccion = (id, el) => {
             document.querySelectorAll('.seccion-app').forEach(s => s.classList.add('hidden'));
             document.getElementById(id).classList.remove('hidden');
@@ -123,25 +100,24 @@ window.onload = () => {
             if(el) el.classList.add('tab-active');
         };
 
-        window.uiModal = (titulo, etiqueta, callback) => {
-            document.getElementById('modalTitle').innerText = titulo;
-            document.getElementById('modalLabel').innerText = etiqueta;
-            document.getElementById('modalInput').value = '';
+        let modalAction = null;
+        window.abrirModal = (titulo, etiqueta, callback) => {
+            document.getElementById('mTitle').innerText = titulo;
+            document.getElementById('mLabel').innerText = etiqueta;
+            document.getElementById('mInput').value = '';
             document.getElementById('mainModal').style.display = 'flex';
             modalAction = callback;
         };
-
         window.cerrarModal = () => document.getElementById('mainModal').style.display = 'none';
-
         window.confirmarModal = () => {
-            const val = document.getElementById('modalInput').value;
+            const val = document.getElementById('mInput').value;
             if(!val) return;
             modalAction(val);
             cerrarModal();
         };
 
         // ==========================================
-        // MÓDULO 3: DASHBOARD (VISUALIZACIÓN)
+        // MÓDULO 3: DASHBOARD LOGÍSTICO
         // ==========================================
         const moduloDashboard = {
             init: async function() {
@@ -163,28 +139,28 @@ window.onload = () => {
                             if(vReal) ingresados++;
 
                             cont.innerHTML += `
-                                <div class="flex items-center justify-between p-4 border-b bg-white">
+                                <div class="flex items-center justify-between p-4 border-b bg-white italic">
                                     <div class="flex items-center gap-3">
                                         <span class="text-lg">${vReal ? '✅' : '⏳'}</span>
                                         <div>
                                             <p class="font-bold text-slate-800 text-sm">${f[2]} <span class="text-slate-400 font-normal">#${f[0]}</span></p>
-                                            <p class="text-[9px] font-bold text-slate-400 uppercase">${f[8]}</p>
+                                            <p class="text-[9px] font-black text-slate-400 uppercase">${f[8]}</p>
                                         </div>
                                     </div>
-                                    <p class="text-[9px] font-black uppercase text-blue-800">${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}</p>
+                                    <p class="text-[10px] font-black uppercase text-blue-800">${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}</p>
                                 </div>`;
                         });
                         document.getElementById('dashTotal').innerText = filasPlan.length;
                         document.getElementById('dashIng').innerText = ingresados;
                     });
-                } catch(e) { console.error("Error Dashboard", e); }
+                } catch(e) { console.error(e); }
             }
         };
 
         // ==========================================
-        // MÓDULO 4: PROCESOS LOGÍSTICOS
+        // MÓDULO 4: LÓGICA DE PROCESOS
         // ==========================================
-        window.procGarita = async (idManual = null) => {
+        window.registrarIngreso = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value;
             if(!id) return;
             const res = await fetch(URL_SHEET_CSV);
@@ -193,131 +169,133 @@ window.onload = () => {
             if(f) {
                 push(vehiculosRef, {
                     codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(),
-                    estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada: 0, pSalida: 0
+                    estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada:0, pSalida:0
                 });
                 document.getElementById('inputGarita').value = '';
             } else alert("ID No Planificado");
         };
 
         window.procUpdate = (id, data) => update(ref(db, `vehiculos/${id}`), data);
-        window.procDelete = (id) => { if(confirm("¿Confirmar salida física?")) remove(ref(db, `vehiculos/${id}`)); };
+        window.procDelete = (id) => { if(confirm("¿CONFIRMAR SALIDA FÍSICA?")) remove(ref(db, `vehiculos/${id}`)); };
 
         // ==========================================
-        // MÓDULO 5: MONITOR (VISTA EN TIEMPO REAL)
+        // MÓDULO 5: MONITOR TIEMPO REAL
         // ==========================================
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
-            const L = { 
-                'secBascula': document.getElementById('lBascula'), 
-                'secDist': document.getElementById('lDist'), 
-                'secCarga': document.getElementById('lCarga'), 
-                'secGaritaOut': document.getElementById('lGaritaOut') 
-            };
+            const L = { 'secBascula': document.getElementById('lBascula'), 'secDist': document.getElementById('lDist'), 'secCarga': document.getElementById('lCarga'), 'secGaritaOut': document.getElementById('lGaritaOut') };
             Object.values(L).forEach(s => s.innerHTML = '');
             if(!data) return;
 
             Object.keys(data).forEach(key => {
                 const v = data[key];
                 const card = (btn) => `
-                    <div class="bg-white border rounded-xl p-5 mb-4 shadow-sm card-anim">
+                    <div class="bg-white border rounded-2xl p-6 mb-4 shadow-sm animate-fade">
                         <div class="flex justify-between mb-2">
-                            <span class="text-[9px] font-bold text-slate-300 uppercase italic tracking-widest">${v.estado.replace(/_/g,' ')}</span>
-                            <span class="text-[10px] font-bold text-blue-900">ID: ${v.codigo}</span>
+                            <span class="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">${v.estado.replace(/_/g,' ')}</span>
+                            <span class="text-[10px] font-bold text-blue-900 bg-blue-50 px-2 rounded">ID: ${v.codigo}</span>
                         </div>
-                        <h3 class="text-xl font-bold text-slate-800 mb-1 italic tracking-tight">${v.placa}</h3>
-                        <p class="text-[10px] text-slate-500 font-bold uppercase mb-4">${v.chofer} | ${v.area}</p>
-                        ${v.anden !== '-' ? `<p class="text-[10px] font-black text-blue-700 mb-4 uppercase">📍 Andén: ${v.anden}</p>` : ''}
+                        <h3 class="text-2xl font-black text-slate-800 mb-1 italic tracking-tighter">${v.placa}</h3>
+                        <p class="text-[11px] text-slate-500 font-bold uppercase mb-4">${v.chofer} | ${v.area}</p>
+                        ${v.anden !== '-' ? `<p class="text-xs font-black text-blue-700 mb-4 uppercase italic">📍 Andén: ${v.anden}</p>` : ''}
                         ${btn}
                     </div>`;
 
-                if(v.estado === 'PESAJE_ENTRADA') L.secBascula.innerHTML += card(`<button onclick="uiModal('BÁSCULA','PESO ENTRADA (KG)', (v)=>procUpdate('${key}',{pEntrada:v, estado:'DIST_DOCS_CARGA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase shadow-lg">Registrar Peso</button>`);
-                else if(v.estado === 'DIST_DOCS_CARGA') L.secDist.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'CARGA_ASIGNAR_ANDEN'})" class="w-full bg-slate-700 text-white py-3 rounded font-bold text-[10px] uppercase">Entregar Docs Carga</button>`);
-                else if(v.estado === 'CARGA_ASIGNAR_ANDEN') L.secCarga.innerHTML += card(`<button onclick="uiModal('CARGA','NÚMERO DE ANDÉN', (v)=>procUpdate('${key}',{anden:v, estado:'CARGA_LISTO_INICIO'}))" class="w-full bg-slate-800 text-white py-3 rounded font-bold text-[10px] uppercase">Asignar Andén</button>`);
-                else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest">Iniciar Carga</button>`);
+                if(v.estado === 'PESAJE_ENTRADA') L.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA','PESO ENTRADA (KG)', (val)=>procUpdate('${key}',{pEntrada:val, estado:'DIST_DOCS_CARGA'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Registrar Peso</button>`);
+                else if(v.estado === 'DIST_DOCS_CARGA') L.secDist.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'CARGA_ASIGNAR_ANDEN'})" class="w-full bg-slate-700 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Carga</button>`);
+                else if(v.estado === 'CARGA_ASIGNAR_ANDEN') L.secCarga.innerHTML += card(`<button onclick="abrirModal('CARGA','NÚMERO DE ANDÉN', (val)=>procUpdate('${key}',{anden:val, estado:'CARGA_LISTO_INICIO'}))" class="w-full bg-slate-800 text-white py-4 rounded-xl font-black text-[10px] uppercase">Asignar Andén</button>`);
+                else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-widest">Iniciar Carga</button>`);
                 else if(v.estado === 'CARGANDO') {
                     const m = Math.floor((Date.now() - v.inicioCarga)/60000);
-                    L.secCarga.innerHTML += card(`<div class="flex gap-2"><div class="flex-1 bg-red-50 text-red-600 font-bold text-[10px] flex items-center justify-center rounded">${m} MIN</div><button onclick="uiModal('CARGA','PRECINTOS', (v)=>procUpdate('${key}',{precintos:v, estado:'DIST_DOCS_SALIDA'}))" class="flex-[2] bg-green-600 text-white py-3 rounded font-bold text-[10px] uppercase">Cerrar Carga</button></div>`);
+                    L.secCarga.innerHTML += card(`<div class="flex gap-2"><div class="flex-1 bg-red-50 text-red-600 font-black text-[10px] flex items-center justify-center rounded-xl animate-pulse">${m} MIN</div><button onclick="abrirModal('CARGA','PRECINTOS', (val)=>procUpdate('${key}',{precintos:val, estado:'DIST_DOCS_SALIDA'}))" class="flex-[2] bg-green-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Finalizar</button></div>`);
                 }
-                else if(v.estado === 'DIST_DOCS_SALIDA') L.secDist.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-3 rounded font-bold text-[10px] uppercase">Entregar Docs Salida</button>`);
-                else if(v.estado === 'PESAJE_SALIDA') L.secBascula.innerHTML += card(`<button onclick="uiModal('BÁSCULA','PESO SALIDA (KG)', (v)=>procUpdate('${key}',{pSalida:v, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase shadow-lg">Peso Salida</button>`);
-                else if(v.estado === 'LISTO_SALIDA') L.secGaritaOut.innerHTML += card(`<button onclick="procDelete('${key}')" class="w-full bg-black text-white py-4 rounded font-bold text-[10px] uppercase tracking-[0.2em] shadow-xl">Confirmar Salida</button>`);
+                else if(v.estado === 'DIST_DOCS_SALIDA') L.secDist.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Salida</button>`);
+                else if(v.estado === 'PESAJE_SALIDA') L.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA','PESO SALIDA (KG)', (val)=>procUpdate('${key}',{pSalida:val, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Peso Salida</button>`);
+                else if(v.estado === 'LISTO_SALIDA') L.secGaritaOut.innerHTML += card(`<button onclick="procDelete('${key}')" class="w-full bg-black text-white py-5 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-2xl">Confirmar Salida</button>`);
             });
         });
+
+        // ==========================================
+        // CONTROL DE SESIÓN AL INICIO
+        // ==========================================
+        window.onload = () => {
+            const session = localStorage.getItem('agripac_session');
+            if (session) {
+                const user = JSON.parse(session);
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                const roles = user.roles || [];
+                document.querySelectorAll('.tab-btn').forEach(b => { if(!roles.includes(b.dataset.sec)) b.classList.add('hidden-auth'); });
+                const visible = document.querySelector('.tab-btn:not(.hidden-auth)');
+                if (visible) {
+                    mostrarSeccion(visible.dataset.sec, visible);
+                    if(roles.includes("secDashboard")) moduloDashboard.init();
+                }
+            }
+        };
 
         window.uiScanner = () => {
             const h = new Html5Qrcode("reader");
             document.getElementById('rc').classList.remove('hidden');
-            h.start({facingMode:"environment"}, {fps:10, qrbox:250}, (t)=>{ h.stop(); document.getElementById('rc').classList.add('hidden'); procGarita(t); });
+            h.start({facingMode:"environment"}, {fps:10, qrbox:250}, (t)=>{ h.stop(); document.getElementById('rc').classList.add('hidden'); registrarIngreso(t); });
         };
     </script>
 </head>
 <body>
 
-<div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
-    <div class="absolute inset-0 z-0">
-        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover">
-        <div class="absolute inset-0 bg-blue-950/40"></div>
-    </div>
-    <div class="relative z-10 w-full h-full flex items-center p-12">
-        <div class="w-1/2 text-white hidden lg:block pr-20">
-            <h1 class="text-6xl font-black italic mb-4 uppercase">Logística <span class="text-amber-500">Agripac</span></h1>
-            <p class="text-xl font-bold opacity-80 uppercase tracking-widest text-blue-50">Acceso restringido a personal autorizado</p>
-        </div>
-        <div class="w-full lg:w-1/2 flex justify-end">
-            <div class="bg-white p-12 rounded-[2.5rem] shadow-2xl w-full max-w-lg">
-                <h2 class="text-4xl font-black text-slate-900 mb-8 italic">Sign In</h2>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">User ID</label>
-                        <input type="text" id="loginUser" placeholder="Nombre de usuario" class="w-full p-4 bg-slate-50 border rounded-xl font-bold outline-none focus:border-[#003399]">
+    <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
+        <div class="absolute inset-0 z-0"><img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover"><div class="absolute inset-0 bg-blue-950/40"></div></div>
+        <div class="relative z-10 w-full h-full flex items-center p-8 lg:p-20">
+            <div class="w-1/2 text-white hidden lg:block pr-20">
+                <h1 class="text-7xl font-black italic mb-4 tracking-tighter">LOGÍSTICA <br><span class="text-[#FFB800]">AGRIPAC</span></h1>
+                <p class="text-xl font-bold uppercase tracking-widest opacity-80">Gestión de Patio en Tiempo Real</p>
+            </div>
+            <div class="w-full lg:w-1/2 flex justify-end">
+                <div class="bg-white p-12 rounded-[3rem] shadow-2xl w-full max-w-lg border border-white/20">
+                    <h2 class="text-5xl font-black text-slate-900 mb-10 italic tracking-tighter">Sign In</h2>
+                    <div class="space-y-6">
+                        <input type="email" id="loginUser" placeholder="usuario@agripac.com.ec" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-[#003399] text-lg">
+                        <input type="password" id="loginPassword" placeholder="Password" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-[#003399] text-lg">
+                        <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-800 transition-all active:scale-95">Ingresar al Sistema</button>
                     </div>
-                    
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Password</label>
-                        <input type="password" id="loginPassword" placeholder="••••••••" class="w-full p-4 bg-slate-50 border rounded-xl font-bold outline-none focus:border-[#003399]">
-                    </div>
-
-                    <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-800 transition-all mt-4">
-                        Ingresar al Sistema
-                    </button>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
     <div id="mainApp" class="hidden h-screen flex flex-col">
-        <header class="bg-white border-b py-5 px-6 flex justify-between items-center sticky top-0 z-40">
+        <header class="bg-white border-b py-6 px-8 flex justify-between items-center sticky top-0 z-40">
             <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-8">
-            <button onclick="logout()" class="text-[8px] font-black uppercase text-red-500 bg-red-50 px-3 py-2 rounded-lg">Cerrar Sesión</button>
+            <button onclick="logout()" class="text-[9px] font-black uppercase text-red-500 bg-red-50 px-4 py-2 rounded-xl border border-red-100">Cerrar Sesión</button>
         </header>
 
-        <nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[77px] z-30">
-            <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard</button>
-            <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In)</button>
-            <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Báscula</button>
-            <button data-sec="secDist" onclick="mostrarSeccion('secDist', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Distribución</button>
-            <button data-sec="secCarga" onclick="mostrarSeccion('secCarga', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Carga</button>
-            <button data-sec="secGaritaOut" onclick="mostrarSeccion('secGaritaOut', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (Out)</button>
+        <nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[81px] z-30">
+            <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard</button>
+            <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In)</button>
+            <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Báscula</button>
+            <button data-sec="secDist" onclick="mostrarSeccion('secDist', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Distribución</button>
+            <button data-sec="secCarga" onclick="mostrarSeccion('secCarga', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Carga</button>
+            <button data-sec="secGaritaOut" onclick="mostrarSeccion('secGaritaOut', this)" class="tab-btn flex-none px-8 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (Out)</button>
         </nav>
 
         <main class="flex-grow overflow-y-auto p-6">
-            <div id="secDashboard" class="seccion-app hidden max-w-4xl mx-auto">
-                <div class="grid grid-cols-2 gap-4 mb-6">
-                    <div class="bg-blue-900 text-white p-6 rounded-3xl"><p class="text-[9px] font-bold uppercase opacity-60">Planificados</p><p id="dashTotal" class="text-4xl font-black">0</p></div>
-                    <div class="bg-white border p-6 rounded-3xl"><p class="text-[9px] font-bold uppercase text-slate-400">Ingresados</p><p id="dashIng" class="text-4xl font-black text-blue-900">0</p></div>
+            <div id="secDashboard" class="seccion-app hidden max-w-4xl mx-auto animate-fade">
+                <div class="grid grid-cols-2 gap-6 mb-8 text-center">
+                    <div class="bg-blue-900 text-white p-8 rounded-[2rem] shadow-xl shadow-blue-100"><p class="text-[10px] font-bold uppercase opacity-60">Planificados</p><p id="dashTotal" class="text-5xl font-black">0</p></div>
+                    <div class="bg-white border p-8 rounded-[2rem] shadow-sm"><p class="text-[10px] font-bold uppercase text-slate-400">En Planta</p><p id="dashIng" class="text-5xl font-black text-blue-900">0</p></div>
                 </div>
-                <div id="lDashboard" class="bg-white border rounded-3xl overflow-hidden shadow-sm"></div>
+                <div id="lDashboard" class="bg-white border rounded-[2rem] overflow-hidden shadow-sm"></div>
             </div>
 
-            <div id="secGarita" class="seccion-app hidden max-w-xl mx-auto">
-                <div class="bg-white border p-8 rounded-3xl text-center shadow-sm">
-                    <button onclick="uiScanner()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black mb-6 text-xs shadow-lg">📷 ESCANEAR QR</button>
-                    <input id="inputGarita" type="text" placeholder="ID MANUAL" class="w-full p-4 bg-slate-50 border rounded-2xl mb-4 text-center font-black uppercase outline-none focus:border-[#003399]">
-                    <button onclick="procGarita()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded-2xl font-black uppercase text-[10px]">Validar Acceso</button>
+            <div id="secGarita" class="seccion-app hidden max-w-xl mx-auto animate-fade">
+                <div class="bg-white border p-10 rounded-[2.5rem] text-center shadow-sm">
+                    <button onclick="uiScanner()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black mb-8 text-xs shadow-lg">📷 ESCANEAR QR</button>
+                    <div class="relative mb-8"><hr><span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[9px] text-slate-300 font-black uppercase">Ingreso Manual</span></div>
+                    <input id="inputGarita" type="text" placeholder="ID PLANIFICACIÓN" class="w-full p-5 bg-slate-50 border rounded-2xl mb-4 text-center font-black uppercase outline-none focus:ring-2 focus:ring-blue-900 transition-all">
+                    <button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded-2xl font-black uppercase text-[10px]">Validar Acceso</button>
                 </div>
             </div>
+
             <div id="secBascula" class="seccion-app hidden max-w-xl mx-auto"><div id="lBascula"></div></div>
             <div id="secDist" class="seccion-app hidden max-w-xl mx-auto"><div id="lDist"></div></div>
             <div id="secCarga" class="seccion-app hidden max-w-xl mx-auto"><div id="lCarga"></div></div>
@@ -325,21 +303,21 @@ window.onload = () => {
         </main>
     </div>
 
-    <div id="mainModal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-6 animate-fade">
-        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 border-t-4 border-[#003399] shadow-2xl">
-            <h2 id="modalTitle" class="text-center font-black text-slate-800 text-lg uppercase mb-1 tracking-tighter italic">TÍTULO</h2>
-            <p id="modalLabel" class="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-6 italic">Instrucción</p>
-            <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-8 text-center font-black text-blue-900 outline-none focus:border-[#003399] transition-all uppercase">
+    <div id="mainModal" class="modal-overlay fixed inset-0 z-[300] items-center justify-center p-6 animate-fade">
+        <div class="bg-white w-full max-w-sm rounded-[2.5rem] p-10 border-t-8 border-[#003399] shadow-2xl">
+            <h2 id="mTitle" class="text-center font-black text-slate-800 text-xl uppercase italic mb-1 tracking-tighter">TÍTULO</h2>
+            <p id="mLabel" class="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 italic">Instrucción</p>
+            <input id="mInput" type="text" class="w-full p-5 bg-slate-50 border rounded-2xl mb-8 text-center font-black text-blue-900 outline-none focus:ring-2 focus:ring-blue-900 text-xl uppercase">
             <div class="flex gap-4">
-                <button onclick="cerrarModal()" class="flex-1 text-[9px] font-bold uppercase text-slate-400 tracking-widest">Cancelar</button>
-                <button onclick="confirmarModal()" class="flex-1 bg-[#003399] text-white py-3 rounded-xl font-bold text-[9px] uppercase shadow-lg">Confirmar</button>
+                <button onclick="cerrarModal()" class="flex-1 text-[10px] font-black uppercase text-slate-400">Cancelar</button>
+                <button onclick="confirmarModal()" class="flex-[2] bg-[#003399] text-white py-4 rounded-xl font-black text-xs uppercase shadow-xl">Confirmar</button>
             </div>
         </div>
     </div>
 
-    <div id="rc" class="hidden fixed inset-0 bg-white z-[110] flex flex-col items-center justify-center p-6">
-        <div id="reader" class="w-full max-w-sm border rounded-2xl overflow-hidden mb-8 shadow-xl"></div>
-        <button onclick="location.reload()" class="text-[9px] font-bold uppercase text-slate-400 tracking-widest">Finalizar Cámara</button>
+    <div id="rc" class="hidden fixed inset-0 bg-white z-[500] flex flex-col items-center justify-center p-6">
+        <div id="reader" class="w-full max-w-sm rounded-3xl overflow-hidden border-4 border-[#003399] shadow-2xl mb-8"></div>
+        <button onclick="location.reload()" class="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-slate-100 px-8 py-3 rounded-full">Cerrar Cámara</button>
     </div>
 
 </body>
