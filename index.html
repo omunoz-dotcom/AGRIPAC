@@ -4,11 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AGRIPAC - Sistema de Control de Patio</title>
-    
     <link rel="icon" type="image/png" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s">
-
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
@@ -28,57 +32,63 @@
         const vehiculosRef = ref(db, 'vehiculos');
         const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
 
+        let modalAction = null;
+
         // --- NAVEGACIÓN ---
-        window.mostrarSeccion = function(seccionId) {
+        window.mostrarSeccion = (id) => {
             document.querySelectorAll('.seccion-app').forEach(s => s.classList.add('hidden'));
-            document.getElementById(seccionId).classList.remove('hidden');
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('bg-blue-800', 'text-white', 'shadow-inner'));
-            event.currentTarget.classList.add('bg-blue-800', 'text-white', 'shadow-inner');
+            document.getElementById(id).classList.remove('hidden');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('bg-blue-900', 'text-white'));
+            event.currentTarget.classList.add('bg-blue-900', 'text-white');
         };
 
-        // --- GARITA IN ---
-        window.validarGarita = async function(idManual = null) {
+        // --- MODAL EJECUTIVO ---
+        window.abrirModal = (titulo, placeholder, callback) => {
+            document.getElementById('modalTitulo').innerText = titulo;
+            document.getElementById('modalInput').placeholder = placeholder;
+            document.getElementById('modalInput').value = '';
+            document.getElementById('customModal').classList.remove('hidden');
+            document.getElementById('customModal').classList.add('flex');
+            modalAction = callback;
+        };
+
+        window.cerrarModal = () => {
+            document.getElementById('customModal').classList.add('hidden');
+            document.getElementById('customModal').classList.remove('flex');
+        };
+
+        window.ejecutarAccionModal = () => {
+            const valor = document.getElementById('modalInput').value;
+            if(!valor) return alert("Por favor complete el campo");
+            modalAction(valor);
+            cerrarModal();
+        };
+
+        // --- GARITA ---
+        window.validarGarita = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value;
-            if(!id) return alert("Ingrese ID");
+            if(!id) return;
             try {
                 const res = await fetch(URL_SHEET_CSV);
                 const csv = await res.text();
                 const filas = csv.split("\n").map(r => r.split(","));
                 const f = filas.find(row => row[0].trim().toUpperCase() === id.trim().toUpperCase());
                 if(f) {
-                    const vehiculo = {
+                    push(vehiculosRef, {
                         codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(),
                         estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(),
                         pEntrada: 0, pSalida: 0, anden: '-', precintos: '-'
-                    };
-                    push(vehiculosRef, vehiculo);
+                    });
                     document.getElementById('inputGarita').value = '';
-                    alert("✅ AUTORIZADO: Dirigirse a Báscula");
-                } else { alert("❌ NO ENCONTRADO EN PLANIFICACIÓN"); }
-            } catch (e) { alert("Error de conexión"); }
+                } else { alert("ID No Planificado"); }
+            } catch (e) { console.error(e); }
         };
 
-        // --- BÁSCULA ---
-        window.registrarPeso = function(id, campo, proximoEstado) {
-            const peso = prompt("Ingrese peso registrado (KG):");
-            if(!peso) return;
-            update(ref(db, `vehiculos/${id}`), { [campo]: peso, estado: proximoEstado });
-        };
-
-        // --- DISTRIBUCIÓN ---
-        window.gestionarCarga = function(id, accion) {
-            if(accion === 'INICIAR') {
-                const a = prompt("Asignar Andén:");
-                if(!a) return;
-                update(ref(db, `vehiculos/${id}`), { anden: a, estado: 'CARGANDO', inicioCarga: Date.now() });
-            } else {
-                const p = prompt("Ingrese Precintos de Seguridad:");
-                if(!p) return;
-                update(ref(db, `vehiculos/${id}`), { precintos: p, estado: 'PESAJE_SALIDA' });
-            }
-        };
-
-        window.darSalidaFinal = (id) => { if(confirm("¿Confirmar salida del predio?")) remove(ref(db, `vehiculos/${id}`)); };
+        // --- PROCESOS CON MODAL ---
+        window.formPeso = (id, campo, proximo) => abrirModal("REGISTRO DE PESO", "Ingrese peso en KG...", (v) => update(ref(db, `vehiculos/${id}`), {[campo]: v, estado: proximo}));
+        window.formAnden = (id) => abrirModal("ASIGNACIÓN DE ANDÉN", "Número de andén...", (v) => update(ref(db, `vehiculos/${id}`), {anden: v, estado: 'CARGANDO', inicioCarga: Date.now()}));
+        window.formPrecintos = (id) => abrirModal("CIERRE DE CARGA", "Número de precintos...", (v) => update(ref(db, `vehiculos/${id}`), {precintos: v, estado: 'PESAJE_SALIDA'}));
+        window.darSalidaFinal = (id) => { if(confirm("¿Confirmar salida física?")) remove(ref(db, `vehiculos/${id}`)); };
 
         // --- MONITOR ---
         onValue(vehiculosRef, (snapshot) => {
@@ -86,54 +96,32 @@
             const contBascula = document.getElementById('listaBascula');
             const contDist = document.getElementById('listaDist');
             const contGaritaOut = document.getElementById('listaGaritaOut');
-            
             contBascula.innerHTML = contDist.innerHTML = contGaritaOut.innerHTML = '';
             if(!data) return;
 
             Object.keys(data).forEach(id => {
                 const v = data[id];
-                const cardBase = `
-                    <div class="bg-white p-4 rounded-xl shadow-md mb-4 border-l-4 border-blue-900">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <h3 class="font-black text-blue-900 text-lg leading-tight">${v.placa}</h3>
-                                <p class="text-[10px] text-gray-400 font-bold tracking-widest uppercase">ID: ${v.codigo}</p>
-                            </div>
+                const card = (htmlBtn) => `
+                    <div class="bg-white p-5 rounded-2xl shadow-lg border border-slate-100 mb-4 animate-fade-in">
+                        <div class="flex justify-between mb-3">
+                            <div><h3 class="font-black text-blue-900 text-xl italic">${v.placa}</h3><p class="text-[10px] font-bold text-slate-400">ID: ${v.codigo}</p></div>
+                            <span class="bg-slate-100 text-[9px] px-2 py-1 rounded-full font-bold h-fit">${v.estado}</span>
                         </div>
-                        <div class="mt-2 text-[11px] text-gray-600 font-medium space-y-0.5 uppercase">
-                            <p>👨‍✈️ ${v.chofer}</p>
-                            <p>🏗️ Área: ${v.area}</p>
+                        <div class="text-[11px] text-slate-600 mb-4 grid grid-cols-2 gap-2 uppercase font-bold">
+                            <p>👨‍✈️ ${v.chofer}</p><p>🏢 ${v.area}</p>
+                            ${v.anden !== '-' ? `<p>🚛 ANDÉN: ${v.anden}</p>` : ''}
                         </div>
-                `;
+                        ${htmlBtn}
+                    </div>`;
 
-                if(v.estado === 'PESAJE_ENTRADA') {
-                    contBascula.innerHTML += cardBase + `
-                        <button onclick="registrarPeso('${id}', 'pEntrada', 'ESPERA_ANDEN')" class="w-full mt-3 bg-amber-500 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Registrar Peso Entrada</button>
-                    </div>`;
+                if(v.estado === 'PESAJE_ENTRADA') contBascula.innerHTML += card(`<button onclick="formPeso('${id}', 'pEntrada', 'ESPERA_ANDEN')" class="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-amber-200">Registrar Peso Entrada</button>`);
+                else if(v.estado === 'ESPERA_ANDEN') contDist.innerHTML += card(`<button onclick="formAnden('${id}')" class="w-full bg-blue-700 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-blue-200">Asignar Andén</button>`);
+                else if(v.estado === 'CARGANDO') {
+                    const min = Math.floor((Date.now() - v.inicioCarga)/60000);
+                    contDist.innerHTML += card(`<div class="flex gap-2"><div class="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-black flex-1 text-center animate-pulse">${min} MIN</div><button onclick="formPrecintos('${id}')" class="flex-[2] bg-green-600 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Finalizar Carga</button></div>`);
                 }
-                else if(v.estado === 'ESPERA_ANDEN' || v.estado === 'CARGANDO') {
-                    const esCargando = v.estado === 'CARGANDO';
-                    const min = esCargando ? Math.floor((Date.now() - v.inicioCarga)/60000) : 0;
-                    contDist.innerHTML += cardBase + `
-                        <div class="mt-3">
-                            ${!esCargando ? `<button onclick="gestionarCarga('${id}', 'INICIAR')" class="w-full bg-blue-700 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Asignar Andén</button>` : 
-                            `<div class="flex items-center gap-2">
-                                <div class="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-black flex-shrink-0 animate-pulse">${min} MIN</div>
-                                <button onclick="gestionarCarga('${id}', 'FINALIZAR')" class="flex-grow bg-green-600 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Finalizar Carga</button>
-                             </div>`}
-                        </div>
-                    </div>`;
-                }
-                else if(v.estado === 'PESAJE_SALIDA') {
-                    contBascula.innerHTML += cardBase + `
-                        <button onclick="registrarPeso('${id}', 'pSalida', 'LISTO_SALIDA')" class="w-full mt-3 bg-amber-700 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Registrar Peso Salida</button>
-                    </div>`;
-                }
-                else if(v.estado === 'LISTO_SALIDA') {
-                    contGaritaOut.innerHTML += cardBase + `
-                        <button onclick="darSalidaFinal('${id}')" class="w-full mt-3 bg-slate-900 text-white text-[10px] py-3 rounded-lg font-black uppercase tracking-widest shadow-lg">Confirmar Salida Física</button>
-                    </div>`;
-                }
+                else if(v.estado === 'PESAJE_SALIDA') contBascula.innerHTML += card(`<button onclick="formPeso('${id}', 'pSalida', 'LISTO_SALIDA')" class="w-full bg-amber-700 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-amber-900/20">Registrar Peso Salida</button>`);
+                else if(v.estado === 'LISTO_SALIDA') contGaritaOut.innerHTML += card(`<button onclick="darSalidaFinal('${id}')" class="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl">Dar Salida Física</button>`);
             });
         });
 
@@ -144,50 +132,52 @@
         };
     </script>
 </head>
-<body class="bg-slate-100 font-sans">
+<body class="bg-slate-50 min-h-screen pb-20 font-sans">
 
-    <header class="bg-white p-4 flex flex-col items-center border-b-4 border-blue-900 shadow-md">
-        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" alt="Agripac Logo" class="h-14 mb-2">
-        <h1 class="text-[10px] font-black tracking-[0.3em] text-blue-900 uppercase">Sistema de Control de Patio</h1>
+    <header class="bg-white p-4 flex flex-col items-center border-b-2 border-slate-100 sticky top-0 z-40">
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-12 mb-1">
+        <div class="h-1 w-24 bg-blue-900 rounded-full mb-1"></div>
+        <p class="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">Sistema de Control de Patio</p>
     </header>
 
-    <nav class="bg-blue-900 p-1.5 flex gap-1 sticky top-0 z-50">
-        <button onclick="mostrarSeccion('secGarita')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg bg-blue-800 text-white">Garita (In)</button>
-        <button onclick="mostrarSeccion('secBascula')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg text-blue-300">Báscula</button>
-        <button onclick="mostrarSeccion('secDist')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg text-blue-300">Distribución</button>
-        <button onclick="mostrarSeccion('secGaritaOut')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg text-blue-300">Garita (Out)</button>
+    <nav class="p-2 flex gap-1 max-w-xl mx-auto mt-4 bg-slate-200/50 rounded-2xl">
+        <button onclick="mostrarSeccion('secGarita')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl bg-blue-900 text-white transition-all">Garita (In)</button>
+        <button onclick="mostrarSeccion('secBascula')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 transition-all">Báscula</button>
+        <button onclick="mostrarSeccion('secDist')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 transition-all">Distribución</button>
+        <button onclick="mostrarSeccion('secGaritaOut')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 transition-all">Garita (Out)</button>
     </nav>
 
     <main class="p-6 max-w-xl mx-auto">
-        <div id="secGarita" class="seccion-app space-y-6">
-            <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center border-t-8 border-blue-900">
-                <p class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest">Validación de Ingreso</p>
-                <button onclick="scan()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black mb-6 shadow-xl active:scale-95 transition-all">📷 ESCANEAR QR</button>
-                <div class="relative my-6"><hr><span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[10px] font-bold text-gray-300">O INGRESO MANUAL</span></div>
-                <input id="inputGarita" type="text" placeholder="ID DEL QR" class="w-full p-5 bg-slate-50 border-2 rounded-2xl mb-4 text-center font-black text-blue-900 focus:border-blue-900 outline-none uppercase">
-                <button onclick="validarGarita()" class="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-lg shadow-blue-200">Validar Planificación</button>
+        <div id="secGarita" class="seccion-app">
+            <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 text-center">
+                <button onclick="scan()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black mb-6 hover:bg-black transition-all">📷 ESCANEAR QR</button>
+                <div class="h-px bg-slate-100 w-full mb-6 flex justify-center items-center"><span class="bg-white px-4 text-[10px] font-bold text-slate-300 uppercase italic">O manual</span></div>
+                <input id="inputGarita" type="text" placeholder="INGRESE ID" class="w-full p-5 bg-slate-50 border-2 border-transparent rounded-2xl mb-4 text-center font-black text-blue-900 focus:border-blue-900 outline-none uppercase transition-all">
+                <button onclick="validarGarita()" class="w-full bg-blue-700 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-lg shadow-blue-200">Validar Acceso</button>
             </div>
         </div>
 
-        <div id="secBascula" class="seccion-app hidden">
-            <h2 class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest text-center">Módulo de Pesaje</h2>
-            <div id="listaBascula"></div>
-        </div>
-
-        <div id="secDist" class="seccion-app hidden">
-            <h2 class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest text-center">Gestión de Andenes</h2>
-            <div id="listaDist"></div>
-        </div>
-
-        <div id="secGaritaOut" class="seccion-app hidden">
-            <h2 class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest text-center">Confirmación de Salida</h2>
-            <div id="listaGaritaOut"></div>
-        </div>
+        <div id="secBascula" class="seccion-app hidden"><div id="listaBascula"></div></div>
+        <div id="secDist" class="seccion-app hidden"><div id="listaDist"></div></div>
+        <div id="secGaritaOut" class="seccion-app hidden"><div id="listaGaritaOut"></div></div>
     </main>
 
-    <div id="rc" class="hidden fixed inset-0 bg-black/95 z-[100] flex flex-col items-center justify-center p-8">
-        <div id="reader" class="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl shadow-blue-500/20"></div>
-        <button onclick="location.reload()" class="mt-10 text-white font-black bg-red-600 px-12 py-4 rounded-full text-xs tracking-widest">CERRAR CÁMARA</button>
+    <div id="customModal" class="hidden fixed inset-0 bg-blue-950/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-fade-in">
+        <div class="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-8 border border-slate-100">
+            <h2 id="modalTitulo" class="text-center font-black text-blue-900 mb-2 uppercase tracking-tighter italic text-xl">TÍTULO</h2>
+            <div class="h-1 w-12 bg-amber-500 rounded-full mx-auto mb-6"></div>
+            <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl mb-6 text-center font-black text-blue-900 outline-none focus:border-blue-900 transition-all">
+            <div class="flex gap-3">
+                <button onclick="cerrarModal()" class="flex-1 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Cancelar</button>
+                <button onclick="ejecutarAccionModal()" class="flex-[2] py-4 bg-blue-900 text-white rounded-xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">Confirmar</button>
+            </div>
+        </div>
     </div>
+
+    <div id="rc" class="hidden fixed inset-0 bg-black/95 z-[100] flex flex-col items-center justify-center p-8">
+        <div id="reader" class="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl"></div>
+        <button onclick="location.reload()" class="mt-10 text-white font-black bg-red-600 px-12 py-4 rounded-full text-xs tracking-widest shadow-xl">CERRAR CÁMARA</button>
+    </div>
+
 </body>
 </html>
