@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGRIPAC - Sistema Modular</title>
+    <title>AGRIPAC - Sistema de Control de Patio</title>
+    
+    <link rel="icon" type="image/png" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script type="module">
@@ -25,16 +28,15 @@
         const vehiculosRef = ref(db, 'vehiculos');
         const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
 
-        // --- NAVEGACIÓN ENTRE SECCIONES ---
+        // --- NAVEGACIÓN ---
         window.mostrarSeccion = function(seccionId) {
             document.querySelectorAll('.seccion-app').forEach(s => s.classList.add('hidden'));
             document.getElementById(seccionId).classList.remove('hidden');
-            
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('bg-blue-600', 'text-white'));
-            event.currentTarget.classList.add('bg-blue-600', 'text-white');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('bg-blue-800', 'text-white', 'shadow-inner'));
+            event.currentTarget.classList.add('bg-blue-800', 'text-white', 'shadow-inner');
         };
 
-        // --- LÓGICA GARITA ---
+        // --- GARITA IN ---
         window.validarGarita = async function(idManual = null) {
             const id = idManual || document.getElementById('inputGarita').value;
             if(!id) return alert("Ingrese ID");
@@ -51,34 +53,34 @@
                     };
                     push(vehiculosRef, vehiculo);
                     document.getElementById('inputGarita').value = '';
-                    alert("✅ AUTORIZADO: Pase a Báscula");
-                } else { alert("❌ NO PLANIFICADO"); }
+                    alert("✅ AUTORIZADO: Dirigirse a Báscula");
+                } else { alert("❌ NO ENCONTRADO EN PLANIFICACIÓN"); }
             } catch (e) { alert("Error de conexión"); }
         };
 
-        // --- LÓGICA BÁSCULA ---
+        // --- BÁSCULA ---
         window.registrarPeso = function(id, campo, proximoEstado) {
-            const peso = prompt("Ingrese peso en KG:");
+            const peso = prompt("Ingrese peso registrado (KG):");
             if(!peso) return;
             update(ref(db, `vehiculos/${id}`), { [campo]: peso, estado: proximoEstado });
         };
 
-        // --- LÓGICA DISTRIBUCIÓN ---
+        // --- DISTRIBUCIÓN ---
         window.gestionarCarga = function(id, accion) {
             if(accion === 'INICIAR') {
-                const a = prompt("Asigne Andén:");
+                const a = prompt("Asignar Andén:");
                 if(!a) return;
                 update(ref(db, `vehiculos/${id}`), { anden: a, estado: 'CARGANDO', inicioCarga: Date.now() });
             } else {
-                const p = prompt("Ingrese Precintos:");
+                const p = prompt("Ingrese Precintos de Seguridad:");
                 if(!p) return;
                 update(ref(db, `vehiculos/${id}`), { precintos: p, estado: 'PESAJE_SALIDA' });
             }
         };
 
-        window.darSalidaFinal = (id) => { if(confirm("¿Vehículo fuera de planta?")) remove(ref(db, `vehiculos/${id}`)); };
+        window.darSalidaFinal = (id) => { if(confirm("¿Confirmar salida del predio?")) remove(ref(db, `vehiculos/${id}`)); };
 
-        // --- MONITOR EN TIEMPO REAL ---
+        // --- MONITOR ---
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
             const contBascula = document.getElementById('listaBascula');
@@ -91,44 +93,50 @@
             Object.keys(data).forEach(id => {
                 const v = data[id];
                 const cardBase = `
-                    <div class="bg-white p-4 rounded-xl shadow mb-3 border-l-4">
-                        <div class="flex justify-between">
-                            <b>${v.placa}</b> <span class="text-[10px] text-gray-400">ID: ${v.codigo}</span>
+                    <div class="bg-white p-4 rounded-xl shadow-md mb-4 border-l-4 border-blue-900">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-black text-blue-900 text-lg leading-tight">${v.placa}</h3>
+                                <p class="text-[10px] text-gray-400 font-bold tracking-widest uppercase">ID: ${v.codigo}</p>
+                            </div>
                         </div>
-                        <p class="text-[10px] text-gray-500 uppercase">${v.area} | Chofer: ${v.chofer}</p>
+                        <div class="mt-2 text-[11px] text-gray-600 font-medium space-y-0.5 uppercase">
+                            <p>👨‍✈️ ${v.chofer}</p>
+                            <p>🏗️ Área: ${v.area}</p>
+                        </div>
                 `;
 
-                // Clasificación por Secciones
                 if(v.estado === 'PESAJE_ENTRADA') {
                     contBascula.innerHTML += cardBase + `
-                        <button onclick="registrarPeso('${id}', 'pEntrada', 'ESPERA_ANDEN')" class="w-full mt-2 bg-amber-500 text-white text-[10px] py-2 rounded font-bold uppercase">Registrar Peso Entrada</button>
+                        <button onclick="registrarPeso('${id}', 'pEntrada', 'ESPERA_ANDEN')" class="w-full mt-3 bg-amber-500 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Registrar Peso Entrada</button>
                     </div>`;
                 }
                 else if(v.estado === 'ESPERA_ANDEN' || v.estado === 'CARGANDO') {
                     const esCargando = v.estado === 'CARGANDO';
                     const min = esCargando ? Math.floor((Date.now() - v.inicioCarga)/60000) : 0;
                     contDist.innerHTML += cardBase + `
-                        <div class="flex gap-2 mt-2">
-                            ${!esCargando ? `<button onclick="gestionarCarga('${id}', 'INICIAR')" class="flex-1 bg-blue-600 text-white text-[10px] py-2 rounded font-bold">ASIGNAR ANDÉN</button>` : 
-                            `<span class="bg-red-100 text-red-600 p-2 rounded text-[10px] font-bold">${min} MIN</span>
-                             <button onclick="gestionarCarga('${id}', 'FINALIZAR')" class="flex-1 bg-green-600 text-white text-[10px] py-2 rounded font-bold uppercase">Cerrar Carga</button>`}
+                        <div class="mt-3">
+                            ${!esCargando ? `<button onclick="gestionarCarga('${id}', 'INICIAR')" class="w-full bg-blue-700 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Asignar Andén</button>` : 
+                            `<div class="flex items-center gap-2">
+                                <div class="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-black flex-shrink-0 animate-pulse">${min} MIN</div>
+                                <button onclick="gestionarCarga('${id}', 'FINALIZAR')" class="flex-grow bg-green-600 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Finalizar Carga</button>
+                             </div>`}
                         </div>
                     </div>`;
                 }
                 else if(v.estado === 'PESAJE_SALIDA') {
                     contBascula.innerHTML += cardBase + `
-                        <button onclick="registrarPeso('${id}', 'pSalida', 'LISTO_SALIDA')" class="w-full mt-2 bg-amber-700 text-white text-[10px] py-2 rounded font-bold uppercase">Registrar Peso Salida</button>
+                        <button onclick="registrarPeso('${id}', 'pSalida', 'LISTO_SALIDA')" class="w-full mt-3 bg-amber-700 text-white text-[10px] py-3 rounded-lg font-black uppercase shadow-lg">Registrar Peso Salida</button>
                     </div>`;
                 }
                 else if(v.estado === 'LISTO_SALIDA') {
                     contGaritaOut.innerHTML += cardBase + `
-                        <button onclick="darSalidaFinal('${id}')" class="w-full mt-2 bg-black text-white text-[10px] py-2 rounded font-bold uppercase tracking-widest">Confirmar Salida Física</button>
+                        <button onclick="darSalidaFinal('${id}')" class="w-full mt-3 bg-slate-900 text-white text-[10px] py-3 rounded-lg font-black uppercase tracking-widest shadow-lg">Confirmar Salida Física</button>
                     </div>`;
                 }
             });
         });
 
-        // Cámara
         window.scan = () => {
             const h = new Html5Qrcode("reader");
             document.getElementById('rc').classList.remove('hidden');
@@ -136,43 +144,50 @@
         };
     </script>
 </head>
-<body class="bg-slate-100">
-    <nav class="bg-blue-900 p-2 flex gap-1 sticky top-0 z-50">
-        <button onclick="mostrarSeccion('secGarita')" class="tab-btn flex-1 py-3 text-[10px] font-black uppercase rounded-lg bg-blue-600 text-white">Garita (In)</button>
-        <button onclick="mostrarSeccion('secBascula')" class="tab-btn flex-1 py-3 text-[10px] font-black uppercase rounded-lg text-blue-200">Báscula</button>
-        <button onclick="mostrarSeccion('secDist')" class="tab-btn flex-1 py-3 text-[10px] font-black uppercase rounded-lg text-blue-200">Distribución</button>
-        <button onclick="mostrarSeccion('secGaritaOut')" class="tab-btn flex-1 py-3 text-[10px] font-black uppercase rounded-lg text-blue-200">Garita (Out)</button>
+<body class="bg-slate-100 font-sans">
+
+    <header class="bg-white p-4 flex flex-col items-center border-b-4 border-blue-900 shadow-md">
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" alt="Agripac Logo" class="h-14 mb-2">
+        <h1 class="text-[10px] font-black tracking-[0.3em] text-blue-900 uppercase">Sistema de Control de Patio</h1>
+    </header>
+
+    <nav class="bg-blue-900 p-1.5 flex gap-1 sticky top-0 z-50">
+        <button onclick="mostrarSeccion('secGarita')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg bg-blue-800 text-white">Garita (In)</button>
+        <button onclick="mostrarSeccion('secBascula')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg text-blue-300">Báscula</button>
+        <button onclick="mostrarSeccion('secDist')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg text-blue-300">Distribución</button>
+        <button onclick="mostrarSeccion('secGaritaOut')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-lg text-blue-300">Garita (Out)</button>
     </nav>
 
-    <main class="p-4 max-w-2xl mx-auto">
-        <div id="secGarita" class="seccion-app space-y-4">
-            <div class="bg-white p-6 rounded-3xl shadow-xl text-center">
-                <h2 class="text-xs font-black uppercase text-gray-400 mb-4">Ingreso de Vehículos</h2>
-                <button onclick="scan()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black mb-4">📷 ESCANEAR QR</button>
-                <input id="inputGarita" type="text" placeholder="ID MANUAL" class="w-full p-4 bg-slate-50 border-2 rounded-2xl mb-2 text-center font-black">
-                <button onclick="validarGarita()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs">Validar Planificación</button>
+    <main class="p-6 max-w-xl mx-auto">
+        <div id="secGarita" class="seccion-app space-y-6">
+            <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center border-t-8 border-blue-900">
+                <p class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest">Validación de Ingreso</p>
+                <button onclick="scan()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black mb-6 shadow-xl active:scale-95 transition-all">📷 ESCANEAR QR</button>
+                <div class="relative my-6"><hr><span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[10px] font-bold text-gray-300">O INGRESO MANUAL</span></div>
+                <input id="inputGarita" type="text" placeholder="ID DEL QR" class="w-full p-5 bg-slate-50 border-2 rounded-2xl mb-4 text-center font-black text-blue-900 focus:border-blue-900 outline-none uppercase">
+                <button onclick="validarGarita()" class="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-lg shadow-blue-200">Validar Planificación</button>
             </div>
         </div>
 
         <div id="secBascula" class="seccion-app hidden">
-            <h2 class="text-xs font-black uppercase text-gray-400 mb-4 tracking-widest">Pendientes de Pesaje</h2>
+            <h2 class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest text-center">Módulo de Pesaje</h2>
             <div id="listaBascula"></div>
         </div>
 
         <div id="secDist" class="seccion-app hidden">
-            <h2 class="text-xs font-black uppercase text-gray-400 mb-4 tracking-widest">Andenes y Carga</h2>
+            <h2 class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest text-center">Gestión de Andenes</h2>
             <div id="listaDist"></div>
         </div>
 
         <div id="secGaritaOut" class="seccion-app hidden">
-            <h2 class="text-xs font-black uppercase text-gray-400 mb-4 tracking-widest">Control de Salida</h2>
+            <h2 class="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest text-center">Confirmación de Salida</h2>
             <div id="listaGaritaOut"></div>
         </div>
     </main>
 
-    <div id="rc" class="hidden fixed inset-0 bg-black/95 z-[60] flex flex-col items-center justify-center p-6">
-        <div id="reader" class="w-full max-w-sm bg-white rounded-3xl overflow-hidden"></div>
-        <button onclick="location.reload()" class="mt-8 text-white font-bold bg-red-600 px-10 py-3 rounded-full">CERRAR</button>
+    <div id="rc" class="hidden fixed inset-0 bg-black/95 z-[100] flex flex-col items-center justify-center p-8">
+        <div id="reader" class="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl shadow-blue-500/20"></div>
+        <button onclick="location.reload()" class="mt-10 text-white font-black bg-red-600 px-12 py-4 rounded-full text-xs tracking-widest">CERRAR CÁMARA</button>
     </div>
 </body>
 </html>
