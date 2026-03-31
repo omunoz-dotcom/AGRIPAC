@@ -116,65 +116,83 @@
             cerrarModal();
         };
 
-      // ==========================================
-// MÓDULO 3: DASHBOARD (CON FILTRO DE FECHA)
+    // ==========================================
+// MÓDULO 3: DASHBOARD GERENCIAL (TABLERO DE CONTROL)
 // ==========================================
 const moduloDashboard = {
     init: async function() {
         try {
-            // 1. Obtener fecha de hoy en formato DD/MM/YYYY (ajusta según tu Excel)
             const hoy = new Date();
-            const diaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
-                           String(hoy.getMonth() + 1).padStart(2, '0') + "/" + 
-                           hoy.getFullYear();
+            const fechaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
+                             String(hoy.getMonth() + 1).padStart(2, '0') + "/" + 
+                             hoy.getFullYear();
 
             const res = await fetch(URL_SHEET_CSV);
             const csv = await res.text();
             
-            // Filtramos las filas: que tengan datos y que la fecha (columna 1 del Excel) sea hoy
-            // Nota: f[1] asume que la fecha está en la segunda columna del Sheets
+            // Filtro dinámico: Solo registros de HOY en columna F (índice 5)
             const filasPlan = csv.split("\n")
                                 .map(r => r.split(","))
                                 .slice(1)
-                                .filter(f => f[1] && f[1].trim() === diaHoy);
-            
+                                .filter(f => f[5] && f[5].trim() === fechaHoy);
+
             onValue(vehiculosRef, (snapshot) => {
                 const enPlanta = snapshot.val() || {};
                 const cont = document.getElementById('lDashboard');
-                cont.innerHTML = '';
-                let ingresados = 0;
+                
+                // Contadores Gerenciales
+                let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, cargando: 0, despachadas: 0 };
 
-                if (filasPlan.length === 0) {
-                    cont.innerHTML = `<div class="p-10 text-center text-slate-400 font-bold uppercase text-[10px]">No hay despachos planificados para hoy (${diaHoy})</div>`;
-                }
-
-                filasPlan.forEach(f => {
+                // Procesar cada unidad planificada para determinar su estatus real
+                const htmlLista = filasPlan.map(f => {
                     const idPlan = f[0].trim().toUpperCase();
                     const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
-                    if(vReal) ingresados++;
+                    
+                    let statusColor = "text-slate-300"; // Default: Pendiente
+                    let statusDesc = "Pendiente de Arribo";
 
-                    cont.innerHTML += `
-                        <div class="flex items-center justify-between p-4 border-b bg-white italic animate-fade">
-                            <div class="flex items-center gap-3">
-                                <span class="text-lg">${vReal ? '✅' : '⏳'}</span>
-                                <div>
-                                    <p class="font-bold text-slate-800 text-sm">${f[2]} <span class="text-slate-400 font-normal">#${f[0]}</span></p>
-                                    <p class="text-[9px] font-black text-slate-400 uppercase">${f[8]}</p>
-                                </div>
-                            </div>
-                            <p class="text-[10px] font-black uppercase text-blue-800">${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}</p>
-                        </div>`;
-                });
-                document.getElementById('dashTotal').innerText = filasPlan.length;
-                document.getElementById('dashIng').innerText = ingresados;
+                    if (!vReal) {
+                        counts.pendientes++;
+                    } else {
+                        counts.enPlanta++;
+                        if (vReal.estado === 'CARGANDO') counts.cargando++;
+                        if (vReal.estado === 'LISTO_SALIDA') statusDesc = "Carga Finalizada";
+                        statusColor = "text-blue-700 font-bold";
+                        statusDesc = vReal.estado.replace(/_/g,' ');
+                    }
+
+                    return `
+                        <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                            <td class="p-3 text-[10px] font-bold text-slate-800">${f[2]}</td>
+                            <td class="p-3 text-[9px] text-slate-500 uppercase">${f[8] || 'S/A'}</td>
+                            <td class="p-3 text-[9px] font-black uppercase ${statusColor}">${statusDesc}</td>
+                        </tr>`;
+                }).join('');
+
+                // 1. Actualizar Tabla de Resumen Gerencial
+                document.getElementById('countProg').innerText = counts.programadas;
+                document.getElementById('countPend').innerText = counts.pendientes;
+                document.getElementById('countPlanta').innerText = counts.enPlanta;
+                document.getElementById('countCarga').innerText = counts.cargando;
+
+                // 2. Renderizar Tabla de Detalle
+                cont.innerHTML = `
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-[9px] uppercase tracking-widest text-slate-500 font-black">
+                                <th class="p-3">Placa</th>
+                                <th class="p-3">Área</th>
+                                <th class="p-3">Estatus Actual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${htmlLista || '<tr><td colspan="3" class="p-10 text-center text-slate-400">Sin movimientos para hoy</td></tr>'}
+                        </tbody>
+                    </table>`;
             });
-        } catch(e) { 
-            console.error("Error en Dashboard:", e);
-            document.getElementById('lDashboard').innerHTML = `<div class="p-4 text-red-500 text-xs">Error cargando planificación.</div>`;
-        }
+        } catch(e) { console.error(e); }
     }
 };
-
         // ==========================================
         // MÓDULO 4: LÓGICA DE PROCESOS
         // ==========================================
@@ -298,12 +316,35 @@ const moduloDashboard = {
 
         <main class="flex-grow overflow-y-auto p-6">
             <div id="secDashboard" class="seccion-app hidden max-w-4xl mx-auto animate-fade">
-                <div class="grid grid-cols-2 gap-6 mb-8 text-center">
-                    <div class="bg-blue-900 text-white p-8 rounded-[2rem] shadow-xl shadow-blue-100"><p class="text-[10px] font-bold uppercase opacity-60">Planificados</p><p id="dashTotal" class="text-5xl font-black">0</p></div>
-                    <div class="bg-white border p-8 rounded-[2rem] shadow-sm"><p class="text-[10px] font-bold uppercase text-slate-400">En Planta</p><p id="dashIng" class="text-5xl font-black text-blue-900">0</p></div>
-                </div>
-                <div id="lDashboard" class="bg-white border rounded-[2rem] overflow-hidden shadow-sm"></div>
+    
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white border-l-4 border-slate-400 p-5 rounded-xl shadow-sm">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Programadas</p>
+            <p id="countProg" class="text-3xl font-black text-slate-800">0</p>
+        </div>
+        <div class="bg-white border-l-4 border-amber-400 p-5 rounded-xl shadow-sm">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pend. Arribo</p>
+            <p id="countPend" class="text-3xl font-black text-amber-500">0</p>
+        </div>
+        <div class="bg-white border-l-4 border-blue-600 p-5 rounded-xl shadow-sm">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">En Planta</p>
+            <p id="countPlanta" class="text-3xl font-black text-blue-700">0</p>
+        </div>
+        <div class="bg-white border-l-4 border-green-500 p-5 rounded-xl shadow-sm">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">En Carga</p>
+            <p id="countCarga" class="text-3xl font-black text-green-600">0</p>
+        </div>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+            <h3 class="text-[10px] font-black uppercase text-slate-600 tracking-tighter italic">Detalle de Operación Diaria</h3>
+            <span class="text-[9px] bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold">LIVE DATA</span>
+        </div>
+        <div id="lDashboard" class="overflow-x-auto">
             </div>
+    </div>
+</div>
 
             <div id="secGarita" class="seccion-app hidden max-w-xl mx-auto animate-fade">
                 <div class="bg-white border p-10 rounded-[2.5rem] text-center shadow-sm">
