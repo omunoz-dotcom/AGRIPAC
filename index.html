@@ -79,84 +79,100 @@
             if(el) el.classList.add('tab-active');
         };
 
-        // DASHBOARD GERENCIAL (MÓDULO 3)
+// ==========================================
+// MÓDULO 3: DASHBOARD (ESTILO GERENCIAL)
+// ==========================================
 const moduloDashboard = {
     init: async function() {
         try {
+            // 1. Obtener la fecha de hoy para el filtro (DD/MM/YYYY)
             const hoy = new Date();
             const fechaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
                              String(hoy.getMonth() + 1).padStart(2, '0') + "/" + 
                              hoy.getFullYear();
 
+            // 2. Descargar la Planificación del Excel
             const res = await fetch(URL_SHEET_CSV);
             const csv = await res.text();
-            const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1).filter(f => f[5] && f[5].trim() === fechaHoy);
+            
+            // 3. Procesar y filtrar: Solo lo planificado para HOY (Columna F / Índice 5)
+            const filasPlan = csv.split("\n")
+                                .map(r => r.split(","))
+                                .slice(1)
+                                .filter(f => f[5] && f[5].trim() === fechaHoy);
 
-            // Escuchamos tanto los vehículos en planta como el historial (opcional)
+            // 4. Escuchar cambios en Firebase en tiempo real
             onValue(vehiculosRef, (snapshot) => {
                 const enPlanta = snapshot.val() || {};
                 const cont = document.getElementById('lDashboard');
                 
-                // Reiniciamos contadores para el tablero superior
-                let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, cargando: 0, despachadas: 0 };
+                // Contadores para los cuadros superiores (KPIs)
+                let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, cargando: 0 };
 
+                // 5. Generar las filas de la tabla con las columnas solicitadas
                 const htmlLista = filasPlan.map(f => {
                     const idPlan = f[0].trim().toUpperCase();
-                    
-                    // Buscamos si el vehículo está en la lista de activos de Firebase
+                    // Buscar si este ID de la planificación está actualmente "En Planta" (Firebase)
                     const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
                     
-                    let statusColor = "text-slate-300";
-                    let statusDesc = "Pendiente de Arribo";
-                    let icon = "⏳";
+                    let statusDesc = "PENDIENTE";
+                    let statusColor = "text-slate-400";
+                    let bgStatus = "bg-slate-50";
 
                     if (vReal) {
-                        // CASO 1: EL VEHÍCULO ESTÁ EN PLANTA
                         counts.enPlanta++;
-                        icon = "✅";
-                        statusColor = "text-blue-700 font-black";
                         statusDesc = vReal.estado.replace(/_/g,' ');
+                        statusColor = "text-blue-800 font-bold";
+                        bgStatus = "bg-blue-100 border border-blue-200";
                         if (vReal.estado === 'CARGANDO') counts.cargando++;
                     } else {
-                        // CASO 2: EL VEHÍCULO NO ESTÁ EN LA LISTA ACTIVA
-                        // Aquí verificamos si ya estuvo (puedes usar un flag o simplemente marcar pendiente)
                         counts.pendientes++;
-                        // Si quieres que el dashboard sepa que ya salió, necesitaríamos un nodo "historial". 
-                        // Por ahora, si no está en planta, vuelve a "Pendiente" o "Completado".
                     }
 
+                    // Retornamos la fila con: Ruta (f[1]), Chofer (f[3]), Placa (f[2]), Operador (f[7])
                     return `
-                        <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors italic">
-                            <td class="p-4 text-xl">${icon}</td>
-                            <td class="p-3 text-[11px] font-bold text-slate-800">${f[2]}<br><span class="text-[9px] text-slate-400 font-normal">ID: ${f[0]}</span></td>
-                            <td class="p-3 text-[10px] text-slate-500 uppercase font-semibold">${f[8] || 'S/A'}</td>
-                            <td class="p-3 text-[10px] font-black uppercase ${statusColor}">${statusDesc}</td>
+                        <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                            <td class="p-4 text-[10px] font-bold text-slate-700 uppercase">${f[1]}</td> 
+                            <td class="p-4 text-[10px] text-slate-600 font-medium uppercase">${f[3]}</td>
+                            <td class="p-4 text-[10px] text-slate-800 font-black uppercase">${f[2]}</td>
+                            <td class="p-4 text-[10px] text-slate-500 uppercase font-semibold">${f[7] || 'N/A'}</td>
+                            <td class="p-4 text-right">
+                                <span class="px-3 py-1 rounded-lg text-[8px] font-black uppercase ${bgStatus} ${statusColor}">
+                                    ${statusDesc}
+                                </span>
+                            </td>
                         </tr>`;
                 }).join('');
 
-                // Actualizar los KPIs superiores
-                document.getElementById('countProg').innerText = counts.programadas;
-                document.getElementById('countPend').innerText = counts.pendientes;
-                document.getElementById('countPlanta').innerText = counts.enPlanta;
-                document.getElementById('countCarga').innerText = counts.cargando;
+                // 6. Actualizar los indicadores numéricos superiores (KPIs)
+                if(document.getElementById('countProg')) document.getElementById('countProg').innerText = counts.programadas;
+                if(document.getElementById('countPend')) document.getElementById('countPend').innerText = counts.pendientes;
+                if(document.getElementById('countPlanta')) document.getElementById('countPlanta').innerText = counts.enPlanta;
+                if(document.getElementById('countCarga')) document.getElementById('countCarga').innerText = counts.cargando;
 
-                // Renderizar la tabla
+                // 7. Renderizar la estructura completa de la tabla
                 cont.innerHTML = `
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-400 font-black border-b">
-                                <th class="p-3 w-16"></th>
-                                <th class="p-3">Unidad / Placa</th>
-                                <th class="p-3">Área de Carga</th>
-                                <th class="p-3">Estatus Operativo</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${htmlLista || '<tr><td colspan="4" class="p-20 text-center text-slate-300 font-bold uppercase text-xs">Sin registros para hoy</td></tr>'}
-                        </tbody>
-                    </table>`;
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-500 font-black border-b">
+                                    <th class="p-4">Ruta</th>
+                                    <th class="p-4">Chofer</th>
+                                    <th class="p-4">Placa</th>
+                                    <th class="p-4">Operador Log.</th>
+                                    <th class="p-4 text-right">Estatus Actual</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${htmlLista || '<tr><td colspan="5" class="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">No hay despachos programados para hoy</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>`;
             });
-        } catch(e) { console.error("Error Dashboard:", e); }
+        } catch(e) { 
+            console.error("Error crítico en Módulo 3:", e);
+            document.getElementById('lDashboard').innerHTML = `<p class="p-10 text-red-500 text-xs font-bold text-center">ERROR DE CONEXIÓN CON PLANIFICACIÓN</p>`;
+        }
     }
 };
         // ACTUALIZACIÓN DE PROCESO (WINDOWS GLOBAL)
