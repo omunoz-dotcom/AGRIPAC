@@ -181,7 +181,32 @@ const moduloDashboard = {
             update(vehiculoRef, data).catch(e => alert("Error: " + e.message));
         };
 
-        window.procDelete = (id) => { if(confirm("¿CONFIRMAR SALIDA?")) remove(ref(db, `vehiculos/${id}`)); };
+        window.procDelete = async (id) => {
+    if(!confirm("¿CONFIRMAR SALIDA DEFINITIVA Y ARCHIVAR?")) return;
+
+    try {
+        const vehiculoRef = ref(db, `vehiculos/${id}`);
+        const snapshot = await get(vehiculoRef);
+
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            // Agregamos datos de cierre
+            data.fechaSalida = new Date().toLocaleString();
+            data.estado = "DESPACHADO";
+            data.usuarioDespacho = JSON.parse(localStorage.getItem('agripac_session')).email;
+
+            // Guardamos en el historial (usando el mismo ID o uno nuevo)
+            const historialRef = ref(db, 'historial');
+            await push(historialRef, data);
+
+            // Borramos de activos
+            await remove(vehiculoRef);
+            alert("Vehículo despachado correctamente.");
+        }
+    } catch (e) {
+        alert("Error al procesar salida: " + e.message);
+    }
+};
 
         // REGISTRO ÚNICO (MÓDULO 4)
         window.registrarIngreso = async (idManual = null) => {
