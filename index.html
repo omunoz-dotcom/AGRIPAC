@@ -12,6 +12,7 @@
         body { font-family: 'Inter', sans-serif; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -42,7 +43,7 @@
             event.currentTarget.classList.add('bg-blue-900', 'text-white');
         };
 
-        // --- MODAL EJECUTIVO ---
+        // --- MODAL ---
         window.abrirModal = (titulo, placeholder, callback) => {
             document.getElementById('modalTitulo').innerText = titulo;
             document.getElementById('modalInput').placeholder = placeholder;
@@ -52,19 +53,18 @@
             modalAction = callback;
         };
 
-        window.cerrarModal = () => {
-            document.getElementById('customModal').classList.add('hidden');
-            document.getElementById('customModal').classList.remove('flex');
-        };
+        window.cerrarModal = () => document.getElementById('customModal').classList.add('hidden');
 
         window.ejecutarAccionModal = () => {
             const valor = document.getElementById('modalInput').value;
-            if(!valor) return alert("Por favor complete el campo");
+            if(!valor) return alert("Complete el campo");
             modalAction(valor);
             cerrarModal();
         };
 
-        // --- GARITA ---
+        // --- LÓGICA DE PROCESOS ---
+
+        // 1. GARITA (IN)
         window.validarGarita = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value;
             if(!id) return;
@@ -77,88 +77,115 @@
                     push(vehiculosRef, {
                         codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(),
                         estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(),
-                        pEntrada: 0, pSalida: 0, anden: '-', precintos: '-'
+                        pEntrada: 0, pSalida: 0, anden: '-', precintos: '-', docs: 'SIN_ENTREGAR'
                     });
                     document.getElementById('inputGarita').value = '';
-                } else { alert("ID No Planificado"); }
+                } else { alert("ID NO ENCONTRADO"); }
             } catch (e) { console.error(e); }
         };
 
-        // --- PROCESOS CON MODAL ---
-        window.formPeso = (id, campo, proximo) => abrirModal("REGISTRO DE PESO", "Ingrese peso en KG...", (v) => update(ref(db, `vehiculos/${id}`), {[campo]: v, estado: proximo}));
-        window.formAnden = (id) => abrirModal("ASIGNACIÓN DE ANDÉN", "Número de andén...", (v) => update(ref(db, `vehiculos/${id}`), {anden: v, estado: 'CARGANDO', inicioCarga: Date.now()}));
-        window.formPrecintos = (id) => abrirModal("CIERRE DE CARGA", "Número de precintos...", (v) => update(ref(db, `vehiculos/${id}`), {precintos: v, estado: 'PESAJE_SALIDA'}));
+        // 2. BÁSCULA ENTRADA
+        window.formPesoIn = (id) => abrirModal("PESO ENTRADA", "KG...", (v) => update(ref(db, `vehiculos/${id}`), {pEntrada: v, estado: 'DIST_DOCS_CARGA'}));
+
+        // 3. DISTRIBUCIÓN (Documentos Carga)
+        window.entregarDocsCarga = (id) => {
+            if(confirm("¿Entregar documentos de carga al Controlador de Carga?")) {
+                update(ref(db, `vehiculos/${id}`), {estado: 'CARGA_ASIGNAR_ANDEN', docs: 'DOCS_CARGA_ENTREGADOS'});
+            }
+        };
+
+        // 4. CARGA (Andén e Inicio)
+        window.formAsignarAnden = (id) => abrirModal("ASIGNAR ANDÉN", "Número de andén...", (v) => update(ref(db, `vehiculos/${id}`), {anden: v, estado: 'CARGA_LISTO_INICIO'}));
+        
+        window.iniciarCarga = (id) => update(ref(db, `vehiculos/${id}`), {estado: 'CARGANDO', inicioCarga: Date.now()});
+        
+        window.finalizarCarga = (id) => {
+            abrirModal("FIN DE CARGA", "Ingrese precintos...", (v) => update(ref(db, `vehiculos/${id}`), {precintos: v, estado: 'DIST_DOCS_SALIDA'}));
+        };
+
+        // 5. DISTRIBUCIÓN (Documentos Salida)
+        window.entregarDocsSalida = (id) => {
+             if(confirm("¿Entregar documentos de salida al Chofer?")) {
+                update(ref(db, `vehiculos/${id}`), {estado: 'PESAJE_SALIDA', docs: 'DOCS_SALIDA_ENTREGADOS'});
+             }
+        }
+
+        // 6. BÁSCULA SALIDA
+        window.formPesoOut = (id) => abrirModal("PESO SALIDA", "KG...", (v) => update(ref(db, `vehiculos/${id}`), {pSalida: v, estado: 'LISTO_SALIDA'}));
+
+        // 7. GARITA (OUT)
         window.darSalidaFinal = (id) => { if(confirm("¿Confirmar salida física?")) remove(ref(db, `vehiculos/${id}`)); };
 
-        // --- MONITOR ---
+        // --- MONITOR EN VIVO ---
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
-            const contBascula = document.getElementById('listaBascula');
-            const contDist = document.getElementById('listaDist');
-            const contGaritaOut = document.getElementById('listaGaritaOut');
-            contBascula.innerHTML = contDist.innerHTML = contGaritaOut.innerHTML = '';
+            const sections = ['listaBascula', 'listaDist', 'listaCarga', 'listaGaritaOut'];
+            sections.forEach(s => document.getElementById(s).innerHTML = '');
             if(!data) return;
 
             Object.keys(data).forEach(id => {
                 const v = data[id];
-                const card = (htmlBtn) => `
+                const card = (btnHTML) => `
                     <div class="bg-white p-5 rounded-2xl shadow-lg border border-slate-100 mb-4 animate-fade-in">
-                        <div class="flex justify-between mb-3">
-                            <div><h3 class="font-black text-blue-900 text-xl italic">${v.placa}</h3><p class="text-[10px] font-bold text-slate-400">ID: ${v.codigo}</p></div>
-                            <span class="bg-slate-100 text-[9px] px-2 py-1 rounded-full font-bold h-fit">${v.estado}</span>
+                        <div class="flex justify-between items-start mb-1">
+                            <h3 class="font-black text-blue-900 text-lg italic leading-none uppercase">${v.placa}</h3>
+                            <span class="text-[8px] font-black bg-slate-100 px-2 py-1 rounded text-slate-500 uppercase">${v.estado.replace(/_/g,' ')}</span>
                         </div>
-                        <div class="text-[11px] text-slate-600 mb-4 grid grid-cols-2 gap-2 uppercase font-bold">
-                            <p>👨‍✈️ ${v.chofer}</p><p>🏢 ${v.area}</p>
-                            ${v.anden !== '-' ? `<p>🚛 ANDÉN: ${v.anden}</p>` : ''}
+                        <div class="text-[10px] text-slate-400 mb-4 font-bold uppercase tracking-tighter">
+                            ${v.chofer} | ${v.area} ${v.anden !== '-' ? '| ANDÉN: ' + v.anden : ''}
                         </div>
-                        ${htmlBtn}
+                        ${btnHTML}
                     </div>`;
 
-                if(v.estado === 'PESAJE_ENTRADA') contBascula.innerHTML += card(`<button onclick="formPeso('${id}', 'pEntrada', 'ESPERA_ANDEN')" class="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-amber-200">Registrar Peso Entrada</button>`);
-                else if(v.estado === 'ESPERA_ANDEN') contDist.innerHTML += card(`<button onclick="formAnden('${id}')" class="w-full bg-blue-700 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-blue-200">Asignar Andén</button>`);
+                // BÁSCULA
+                if(v.estado === 'PESAJE_ENTRADA') document.getElementById('listaBascula').innerHTML += card(`<button onclick="formPesoIn('${id}')" class="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Registrar Peso Entrada</button>`);
+                else if(v.estado === 'PESAJE_SALIDA') document.getElementById('listaBascula').innerHTML += card(`<button onclick="formPesoOut('${id}')" class="w-full bg-amber-600 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Registrar Peso Salida</button>`);
+
+                // DISTRIBUCIÓN
+                if(v.estado === 'DIST_DOCS_CARGA') document.getElementById('listaDist').innerHTML += card(`<button onclick="entregarDocsCarga('${id}')" class="w-full bg-blue-700 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Entregar Docs Carga</button>`);
+                else if(v.estado === 'DIST_DOCS_SALIDA') document.getElementById('listaDist').innerHTML += card(`<button onclick="entregarDocsSalida('${id}')" class="w-full bg-blue-900 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Entregar Docs Salida</button>`);
+
+                // CARGA
+                if(v.estado === 'CARGA_ASIGNAR_ANDEN') document.getElementById('listaCarga').innerHTML += card(`<button onclick="formAsignarAnden('${id}')" class="w-full bg-indigo-500 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Asignar Andén</button>`);
+                else if(v.estado === 'CARGA_LISTO_INICIO') document.getElementById('listaCarga').innerHTML += card(`<button onclick="iniciarCarga('${id}')" class="w-full bg-indigo-700 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg font-black italic">Avisar Parqueo / Iniciar Carga</button>`);
                 else if(v.estado === 'CARGANDO') {
                     const min = Math.floor((Date.now() - v.inicioCarga)/60000);
-                    contDist.innerHTML += card(`<div class="flex gap-2"><div class="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-black flex-1 text-center animate-pulse">${min} MIN</div><button onclick="formPrecintos('${id}')" class="flex-[2] bg-green-600 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Finalizar Carga</button></div>`);
+                    document.getElementById('listaCarga').innerHTML += card(`<div class="flex gap-2"><div class="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-black flex-1 text-center animate-pulse">${min} MIN</div><button onclick="finalizarCarga('${id}')" class="flex-[2] bg-green-600 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg">Cerrar Carga (Precintos)</button></div>`);
                 }
-                else if(v.estado === 'PESAJE_SALIDA') contBascula.innerHTML += card(`<button onclick="formPeso('${id}', 'pSalida', 'LISTO_SALIDA')" class="w-full bg-amber-700 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-amber-900/20">Registrar Peso Salida</button>`);
-                else if(v.estado === 'LISTO_SALIDA') contGaritaOut.innerHTML += card(`<button onclick="darSalidaFinal('${id}')" class="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl">Dar Salida Física</button>`);
+
+                // GARITA OUT
+                if(v.estado === 'LISTO_SALIDA') document.getElementById('listaGaritaOut').innerHTML += card(`<button onclick="darSalidaFinal('${id}')" class="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl">Confirmar Salida Física</button>`);
             });
         });
-
-        window.scan = () => {
-            const h = new Html5Qrcode("reader");
-            document.getElementById('rc').classList.remove('hidden');
-            h.start({facingMode:"environment"}, {fps:10, qrbox:250}, (t)=>{h.stop(); document.getElementById('rc').classList.add('hidden'); validarGarita(t);});
-        };
     </script>
 </head>
-<body class="bg-slate-50 min-h-screen pb-20 font-sans">
+<body class="bg-slate-50 min-h-screen">
 
     <header class="bg-white p-4 flex flex-col items-center border-b-2 border-slate-100 sticky top-0 z-40">
-        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-12 mb-1">
-        <div class="h-1 w-24 bg-blue-900 rounded-full mb-1"></div>
-        <p class="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">Sistema de Control de Patio</p>
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-10 mb-1">
+        <p class="text-[8px] font-black uppercase tracking-[0.4em] text-slate-400 italic">Agripac Patio Flow</p>
     </header>
 
-    <nav class="p-2 flex gap-1 max-w-xl mx-auto mt-4 bg-slate-200/50 rounded-2xl">
-        <button onclick="mostrarSeccion('secGarita')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl bg-blue-900 text-white transition-all">Garita (In)</button>
-        <button onclick="mostrarSeccion('secBascula')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 transition-all">Báscula</button>
-        <button onclick="mostrarSeccion('secDist')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 transition-all">Distribución</button>
-        <button onclick="mostrarSeccion('secGaritaOut')" class="tab-btn flex-1 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 transition-all">Garita (Out)</button>
+    <nav class="p-2 flex overflow-x-auto gap-1 max-w-2xl mx-auto mt-4 bg-slate-200/50 rounded-2xl no-scrollbar">
+        <button onclick="mostrarSeccion('secGarita')" class="tab-btn flex-none px-4 py-3 text-[9px] font-black uppercase rounded-xl bg-blue-900 text-white whitespace-nowrap">Garita (In)</button>
+        <button onclick="mostrarSeccion('secBascula')" class="tab-btn flex-none px-4 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 whitespace-nowrap">Báscula</button>
+        <button onclick="mostrarSeccion('secDist')" class="tab-btn flex-none px-4 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 whitespace-nowrap">Distribución</button>
+        <button onclick="mostrarSeccion('secCarga')" class="tab-btn flex-none px-4 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 whitespace-nowrap">Carga</button>
+        <button onclick="mostrarSeccion('secGaritaOut')" class="tab-btn flex-none px-4 py-3 text-[9px] font-black uppercase rounded-xl text-slate-500 whitespace-nowrap">Garita (Out)</button>
     </nav>
 
     <main class="p-6 max-w-xl mx-auto">
-        <div id="secGarita" class="seccion-app">
-            <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 text-center">
-                <button onclick="scan()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black mb-6 hover:bg-black transition-all">📷 ESCANEAR QR</button>
-                <div class="h-px bg-slate-100 w-full mb-6 flex justify-center items-center"><span class="bg-white px-4 text-[10px] font-bold text-slate-300 uppercase italic">O manual</span></div>
-                <input id="inputGarita" type="text" placeholder="INGRESE ID" class="w-full p-5 bg-slate-50 border-2 border-transparent rounded-2xl mb-4 text-center font-black text-blue-900 focus:border-blue-900 outline-none uppercase transition-all">
+        <div id="secGarita" class="seccion-app text-center">
+            <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+                <button onclick="window.scan()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black mb-6">📷 ESCANEAR QR</button>
+                <input id="inputGarita" type="text" placeholder="INGRESE ID MANUAL" class="w-full p-5 bg-slate-50 border-2 rounded-2xl mb-4 text-center font-black text-blue-900 outline-none uppercase">
                 <button onclick="validarGarita()" class="w-full bg-blue-700 text-white py-5 rounded-2xl font-black uppercase text-xs shadow-lg shadow-blue-200">Validar Acceso</button>
             </div>
         </div>
 
         <div id="secBascula" class="seccion-app hidden"><div id="listaBascula"></div></div>
         <div id="secDist" class="seccion-app hidden"><div id="listaDist"></div></div>
+        <div id="secCarga" class="seccion-app hidden"><div id="listaCarga"></div></div>
         <div id="secGaritaOut" class="seccion-app hidden"><div id="listaGaritaOut"></div></div>
     </main>
 
@@ -166,18 +193,12 @@
         <div class="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-8 border border-slate-100">
             <h2 id="modalTitulo" class="text-center font-black text-blue-900 mb-2 uppercase tracking-tighter italic text-xl">TÍTULO</h2>
             <div class="h-1 w-12 bg-amber-500 rounded-full mx-auto mb-6"></div>
-            <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl mb-6 text-center font-black text-blue-900 outline-none focus:border-blue-900 transition-all">
+            <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl mb-6 text-center font-black text-blue-900 outline-none focus:border-blue-900 transition-all uppercase">
             <div class="flex gap-3">
                 <button onclick="cerrarModal()" class="flex-1 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Cancelar</button>
-                <button onclick="ejecutarAccionModal()" class="flex-[2] py-4 bg-blue-900 text-white rounded-xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">Confirmar</button>
+                <button onclick="ejecutarAccionModal()" class="flex-[2] py-4 bg-blue-900 text-white rounded-xl font-black uppercase text-xs shadow-xl transition-all">Confirmar</button>
             </div>
         </div>
     </div>
-
-    <div id="rc" class="hidden fixed inset-0 bg-black/95 z-[100] flex flex-col items-center justify-center p-8">
-        <div id="reader" class="w-full max-w-sm bg-white rounded-[2.5rem] overflow-hidden shadow-2xl"></div>
-        <button onclick="location.reload()" class="mt-10 text-white font-black bg-red-600 px-12 py-4 rounded-full text-xs tracking-widest shadow-xl">CERRAR CÁMARA</button>
-    </div>
-
 </body>
 </html>
