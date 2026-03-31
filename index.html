@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitácora de Carga - Planta</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-5">
+
+    <h1 class="text-3xl font-bold text-center mb-8 text-blue-800">Control de Ingreso y Carga</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2">🚧 Registro de Garita</h2>
+            <div class="space-y-4">
+                <input id="codigoUnico" type="text" placeholder="Código Único" class="w-full p-2 border rounded">
+                <input id="placa" type="text" placeholder="Placa del Vehículo" class="w-full p-2 border rounded">
+                <button onclick="registrarIngreso()" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Validar e Ingresar</button>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4 border-b pb-2">🚚 Vehículos en Proceso</h2>
+            <div id="listaVehiculos" class="space-y-4">
+                </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Array temporal (En producción usarías Firebase para que sea "en vivo")
+        let vehiculos = [];
+
+        function registrarIngreso() {
+            const codigo = document.getElementById('codigoUnico').value;
+            const placa = document.getElementById('placa').value;
+
+            if(!codigo || !placa) return alert("Llena los datos");
+
+            const nuevoVehiculo = {
+                id: Date.now(),
+                codigo,
+                placa,
+                estado: 'Ingreso a Planta',
+                inicioCarga: null,
+                tiempoTranscurrido: '00:00',
+                anden: 'Pendiente'
+            };
+
+            vehiculos.push(nuevoVehiculo);
+            renderizar();
+        }
+
+        function iniciarCarga(id) {
+            const v = vehiculos.find(x => x.id === id);
+            v.estado = 'En Carga';
+            v.inicioCarga = new Date();
+            v.anden = prompt("Asigne un Andén:");
+            renderizar();
+        }
+
+        function finalizarCarga(id) {
+            const v = vehiculos.find(x => x.id === id);
+            v.estado = 'Carga Finalizada';
+            v.finCarga = new Date();
+            renderizar();
+        }
+
+        // Lógica del Cronómetro
+        setInterval(() => {
+            vehiculos.forEach(v => {
+                if (v.estado === 'En Carga' && v.inicioCarga) {
+                    const ahora = new Date();
+                    const diff = ahora - v.inicioCarga;
+                    const min = Math.floor(diff / 60000);
+                    const seg = Math.floor((diff % 60000) / 1000);
+                    v.tiempoTranscurrido = `${min}m ${seg}s`;
+                }
+            });
+            renderizar();
+        }, 1000);
+
+        function renderizar() {
+            const contenedor = document.getElementById('listaVehiculos');
+            contenedor.innerHTML = '';
+
+            vehiculos.forEach(v => {
+                const card = document.createElement('div');
+                card.className = "p-4 border rounded-lg bg-gray-50 flex justify-between items-center";
+                
+                let colorEstado = v.estado === 'En Carga' ? 'text-blue-600' : 'text-orange-600';
+                if(v.estado === 'Carga Finalizada') colorEstado = 'text-green-600';
+
+                card.innerHTML = `
+                    <div>
+                        <p class="font-bold text-lg">${v.placa} <span class="text-sm font-normal text-gray-500">(${v.codigo})</span></p>
+                        <p class="text-sm">Andén: <b>${v.anden}</b></p>
+                        <p class="font-semibold ${colorEstado}">${v.estado}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-2xl font-mono">${v.estado === 'En Carga' ? v.tiempoTranscurrido : '--:--'}</p>
+                        ${v.estado === 'Ingreso a Planta' ? 
+                            `<button onclick="iniciarCarga(${v.id})" class="text-xs bg-blue-500 text-white px-2 py-1 rounded">Iniciar Carga</button>` : ''}
+                        ${v.estado === 'En Carga' ? 
+                            `<button onclick="finalizarCarga(${v.id})" class="text-xs bg-red-500 text-white px-2 py-1 rounded">Cerrar Carga</button>` : ''}
+                    </div>
+                `;
+                contenedor.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
