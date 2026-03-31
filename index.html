@@ -207,37 +207,6 @@ onValue(ref(db), (snapshot) => {
             const vehiculoRef = ref(db, `vehiculos/${id}`);
             update(vehiculoRef, data).catch(e => alert("Error: " + e.message));
         };
-
-window.descargarReporte = async () => {
-    const snapshot = await get(ref(db, 'historial'));
-    if (!snapshot.exists()) return alert("Aún no hay movimientos en el historial.");
-
-    const data = snapshot.val();
-    // Encabezados del CSV
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "PLACA,CHOFER,RUTA,OPERADOR,INGRESO,SALIDA,USUARIO_DESPACHO\n";
-
-    Object.values(data).forEach(v => {
-        // Creamos la fila para el Excel
-        const fila = [
-            v.placa,
-            v.chofer,
-            v.ruta || v.area,
-            v.operador || "N/A",
-            v.fechaIngreso || "S/D",
-            v.fechaSalida,
-            v.usuarioDespacho
-        ].join(",");
-        csvContent += fila + "\n";
-    });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `REPORTE_AGRIPAC_${new Date().toLocaleDateString()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-};
         
         window.procDelete = async (id) => {
     if(!confirm("¿CONFIRMAR SALIDA DEFINITIVA Y ARCHIVAR?")) return;
