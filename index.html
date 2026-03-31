@@ -223,22 +223,39 @@ window.onload = () => {
 </head>
 <body>
 
-    <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
-        <div class="absolute inset-0 z-0"><img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover"><div class="absolute inset-0 bg-blue-950/40"></div></div>
-        <div class="relative z-10 w-full h-full flex items-center p-12">
-            <div class="w-1/2 text-white hidden lg:block pr-20">
-                <h1 class="text-6xl font-black italic mb-4">SISTEMA <span class="text-amber-500 underline">AGRIPAC</span></h1>
-                <p class="text-xl font-bold opacity-80 uppercase tracking-widest">Control de Patio y Flujos Logísticos</p>
-            </div>
-            <div class="w-full lg:w-1/2 flex justify-end">
-                <div class="bg-white p-12 rounded-[2.5rem] shadow-2xl w-full max-w-lg border border-white/20">
-                    <h2 class="text-4xl font-black text-slate-900 mb-8 italic">Login</h2>
-                    <input type="password" id="loginPassword" placeholder="PIN de Acceso" class="w-full p-5 bg-slate-50 border rounded-2xl mb-6 text-center font-black tracking-widest outline-none focus:border-[#003399] text-xl">
-                    <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-800 transition-all">Sign In</button>
+<div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
+    <div class="absolute inset-0 z-0">
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-blue-950/40"></div>
+    </div>
+    <div class="relative z-10 w-full h-full flex items-center p-12">
+        <div class="w-1/2 text-white hidden lg:block pr-20">
+            <h1 class="text-6xl font-black italic mb-4 uppercase">Logística <span class="text-amber-500">Agripac</span></h1>
+            <p class="text-xl font-bold opacity-80 uppercase tracking-widest text-blue-50">Acceso restringido a personal autorizado</p>
+        </div>
+        <div class="w-full lg:w-1/2 flex justify-end">
+            <div class="bg-white p-12 rounded-[2.5rem] shadow-2xl w-full max-w-lg">
+                <h2 class="text-4xl font-black text-slate-900 mb-8 italic">Sign In</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">User ID</label>
+                        <input type="text" id="loginUser" placeholder="Nombre de usuario" class="w-full p-4 bg-slate-50 border rounded-xl font-bold outline-none focus:border-[#003399]">
+                    </div>
+                    
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Password</label>
+                        <input type="password" id="loginPassword" placeholder="••••••••" class="w-full p-4 bg-slate-50 border rounded-xl font-bold outline-none focus:border-[#003399]">
+                    </div>
+
+                    <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-800 transition-all mt-4">
+                        Ingresar al Sistema
+                    </button>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
     <div id="mainApp" class="hidden h-screen flex flex-col">
         <header class="bg-white border-b py-5 px-6 flex justify-between items-center sticky top-0 z-40">
