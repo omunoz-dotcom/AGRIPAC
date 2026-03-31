@@ -80,55 +80,85 @@
         };
 
         // DASHBOARD GERENCIAL (MÓDULO 3)
-        const moduloDashboard = {
-            init: async function() {
-                try {
-                    const hoy = new Date();
-                    const fechaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
-                                     String(hoy.getMonth() + 1).padStart(2, '0') + "/" + 
-                                     hoy.getFullYear();
+const moduloDashboard = {
+    init: async function() {
+        try {
+            const hoy = new Date();
+            const fechaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
+                             String(hoy.getMonth() + 1).padStart(2, '0') + "/" + 
+                             hoy.getFullYear();
 
-                    const res = await fetch(URL_SHEET_CSV);
-                    const csv = await res.text();
-                    const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1).filter(f => f[5] && f[5].trim() === fechaHoy);
+            const res = await fetch(URL_SHEET_CSV);
+            const csv = await res.text();
+            const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1).filter(f => f[5] && f[5].trim() === fechaHoy);
 
-                    onValue(vehiculosRef, (snapshot) => {
-                        const enPlanta = snapshot.val() || {};
-                        const cont = document.getElementById('lDashboard');
-                        let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, cargando: 0 };
+            // Escuchamos tanto los vehículos en planta como el historial (opcional)
+            onValue(vehiculosRef, (snapshot) => {
+                const enPlanta = snapshot.val() || {};
+                const cont = document.getElementById('lDashboard');
+                
+                // Reiniciamos contadores para el tablero superior
+                let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, cargando: 0, despachadas: 0 };
 
-                        const htmlLista = filasPlan.map(f => {
-                            const idPlan = f[0].trim().toUpperCase();
-                            const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
-                            
-                            let statusColor = "text-slate-300";
-                            let statusDesc = "Pendiente de Arribo";
+                const htmlLista = filasPlan.map(f => {
+                    const idPlan = f[0].trim().toUpperCase();
+                    
+                    // Buscamos si el vehículo está en la lista de activos de Firebase
+                    const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
+                    
+                    let statusColor = "text-slate-300";
+                    let statusDesc = "Pendiente de Arribo";
+                    let icon = "⏳";
 
-                            if (!vReal) { counts.pendientes++; } 
-                            else {
-                                counts.enPlanta++;
-                                if (vReal.estado === 'CARGANDO') counts.cargando++;
-                                statusColor = "text-blue-700 font-bold";
-                                statusDesc = vReal.estado.replace(/_/g,' ');
-                            }
+                    if (vReal) {
+                        // CASO 1: EL VEHÍCULO ESTÁ EN PLANTA
+                        counts.enPlanta++;
+                        icon = "✅";
+                        statusColor = "text-blue-700 font-black";
+                        statusDesc = vReal.estado.replace(/_/g,' ');
+                        if (vReal.estado === 'CARGANDO') counts.cargando++;
+                    } else {
+                        // CASO 2: EL VEHÍCULO NO ESTÁ EN LA LISTA ACTIVA
+                        // Aquí verificamos si ya estuvo (puedes usar un flag o simplemente marcar pendiente)
+                        counts.pendientes++;
+                        // Si quieres que el dashboard sepa que ya salió, necesitaríamos un nodo "historial". 
+                        // Por ahora, si no está en planta, vuelve a "Pendiente" o "Completado".
+                    }
 
-                            return `<tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                                <td class="p-3 text-[10px] font-bold text-slate-800">${f[2]}</td>
-                                <td class="p-3 text-[9px] text-slate-500 uppercase">${f[8] || 'S/A'}</td>
-                                <td class="p-3 text-[9px] font-black uppercase ${statusColor}">${statusDesc}</td>
-                            </tr>`;
-                        }).join('');
+                    return `
+                        <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors italic">
+                            <td class="p-4 text-xl">${icon}</td>
+                            <td class="p-3 text-[11px] font-bold text-slate-800">${f[2]}<br><span class="text-[9px] text-slate-400 font-normal">ID: ${f[0]}</span></td>
+                            <td class="p-3 text-[10px] text-slate-500 uppercase font-semibold">${f[8] || 'S/A'}</td>
+                            <td class="p-3 text-[10px] font-black uppercase ${statusColor}">${statusDesc}</td>
+                        </tr>`;
+                }).join('');
 
-                        document.getElementById('countProg').innerText = counts.programadas;
-                        document.getElementById('countPend').innerText = counts.pendientes;
-                        document.getElementById('countPlanta').innerText = counts.enPlanta;
-                        document.getElementById('countCarga').innerText = counts.cargando;
-                        cont.innerHTML = `<table class="w-full text-left border-collapse"><thead><tr class="bg-slate-100 text-[9px] uppercase tracking-widest text-slate-500 font-black"><th class="p-3">Placa</th><th class="p-3">Área</th><th class="p-3">Estatus</th></tr></thead><tbody>${htmlLista || '<tr><td colspan="3" class="p-10 text-center text-slate-400 font-bold">Sin datos para hoy</td></tr>'}</tbody></table>`;
-                    });
-                } catch(e) { console.error(e); }
-            }
-        };
+                // Actualizar los KPIs superiores
+                document.getElementById('countProg').innerText = counts.programadas;
+                document.getElementById('countPend').innerText = counts.pendientes;
+                document.getElementById('countPlanta').innerText = counts.enPlanta;
+                document.getElementById('countCarga').innerText = counts.cargando;
 
+                // Renderizar la tabla
+                cont.innerHTML = `
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-400 font-black border-b">
+                                <th class="p-3 w-16"></th>
+                                <th class="p-3">Unidad / Placa</th>
+                                <th class="p-3">Área de Carga</th>
+                                <th class="p-3">Estatus Operativo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${htmlLista || '<tr><td colspan="4" class="p-20 text-center text-slate-300 font-bold uppercase text-xs">Sin registros para hoy</td></tr>'}
+                        </tbody>
+                    </table>`;
+            });
+        } catch(e) { console.error("Error Dashboard:", e); }
+    }
+};
         // ACTUALIZACIÓN DE PROCESO (WINDOWS GLOBAL)
         window.procUpdate = (id, data) => {
             const vehiculoRef = ref(db, `vehiculos/${id}`);
