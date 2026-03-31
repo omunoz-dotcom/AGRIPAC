@@ -47,60 +47,49 @@
 import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 window.login = async () => {
-    // 1. Capturamos los datos del formulario
     const emailInput = document.getElementById('loginUser').value.trim().toLowerCase();
     const passInput = document.getElementById('loginPassword').value.trim();
     const btn = document.querySelector('button[onclick="login()"]');
-
-    if (!emailInput || !passInput) {
-        alert("Por favor ingrese correo y contraseña");
-        return;
-    }
 
     btn.innerText = "VERIFICANDO...";
     btn.disabled = true;
 
     try {
         const dbRef = ref(getDatabase());
-        // USAMOS "Usuarios" con U MAYÚSCULA como está en tu Firebase
         const snapshot = await get(child(dbRef, 'Usuarios'));
         
         if (snapshot.exists()) {
             const usuarios = snapshot.val();
             let usuarioEncontrado = null;
 
-            // Recorremos los usuarios (U1, U2...)
             for (let id in usuarios) {
                 const u = usuarios[id];
-                // Comparamos email y pass (asegúrate que en Firebase digan "email" y "pass" en minúscula)
-                if (u.email && u.email.toLowerCase() === emailInput && u.pass === passInput) {
+                // IMPORTANTE: Verifica que en Firebase diga 'email' y 'pass' en minúsculas
+                if (u.email.toLowerCase() === emailInput && u.pass === passInput) {
                     usuarioEncontrado = u;
                     break;
                 }
             }
 
             if (usuarioEncontrado) {
-                console.log("Acceso concedido:", usuarioEncontrado);
                 localStorage.setItem('agripac_session', JSON.stringify(usuarioEncontrado));
                 location.reload();
             } else {
-                alert("DATOS INCORRECTOS:\n1. Verifique que el correo sea exacto.\n2. Verifique la contraseña.");
+                alert("DATOS INCORRECTOS:\n\nEl sistema no encontró coincidencia para:\nUsuario: " + emailInput + "\n\nAsegúrate de que en Firebase los campos se llamen 'email' y 'pass' (en minúsculas).");
                 btn.innerText = "INGRESAR AL SISTEMA";
                 btn.disabled = false;
             }
         } else {
-            alert("ERROR CRÍTICO: No se encontró la carpeta 'Usuarios' en Firebase.");
+            alert("ERROR: La carpeta 'Usuarios' no existe en Firebase. Revisa que empiece con 'U' mayúscula.");
             btn.innerText = "INGRESAR AL SISTEMA";
             btn.disabled = false;
         }
     } catch (error) {
-        console.error("Error en login:", error);
-        alert("ERROR DE CONEXIÓN: Verifique su internet o reglas de Firebase.");
+        alert("ERROR DE CONEXIÓN: " + error.message);
         btn.innerText = "INGRESAR AL SISTEMA";
         btn.disabled = false;
     }
 };
-
 window.onload = () => {
     const sessionData = localStorage.getItem('agripac_session');
     if (sessionData) {
