@@ -8,19 +8,57 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --agripac-blue: #003399; --agripac-gray: #F4F7FA; }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--agripac-gray); }
-        .tab-active { border-bottom: 4px solid var(--agripac-blue); color: var(--agripac-blue) !important; font-weight: 800; }
-        .modal-blur { background: rgba(0, 51, 153, 0.1); backdrop-filter: blur(8px); }
-        .card-entry { animation: slideUp 0.4s ease-out; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700;800;900&display=swap');
+        
+        :root {
+            --agripac-blue: #003399;
+            --agripac-gray-bg: #F4F7FA;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; padding: 0; 
+            height: 100vh; overflow: hidden;
+        }
+
+        /* Estilo para los Tabs Activos */
+        .tab-active {
+            border-bottom: 4px solid var(--agripac-blue);
+            color: var(--agripac-blue) !important;
+            font-weight: 700;
+        }
+
+        /* Ocultar elementos según permisos */
         .hidden-auth { display: none !important; }
+
+        /* Estilo Sobrio para Modales en CSS3 */
+        .modal-blur {
+            background: rgba(0, 51, 153, 0.1);
+            backdrop-filter: blur(8px);
+            display: none; /* Oculto por defecto */
+        }
+
+        /* Animaciones */
+        .animate-fade { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Estilo específico para inputs tipo login (estilo ONE) */
+        .login-input {
+            border: 1px solid #D1D5DB;
+            transition: all 0.2s ease;
+        }
+        .login-input:focus {
+            border-color: #003399;
+            box-shadow: 0 0 0 3px rgba(0, 51, 153, 0.1);
+        }
+
     </style>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+        // CONFIGURACIÓN DE FIREBASE (Tus credenciales reales)
         const firebaseConfig = {
             apiKey: "AIzaSyANUkQLUGrMh4ET1LdyYCucuZqqVKR39u4",
             authDomain: "agripac-control.firebaseapp.com",
@@ -28,7 +66,8 @@
             projectId: "agripac-control",
             storageBucket: "agripac-control.firebasestorage.app",
             messagingSenderId: "1033116506620",
-            appId: "1:1033116506620:web:d4472bec9f6178b48bba79"
+            appId: "1:1033116506620:web:d4472bec9f6178b48bba79",
+            measurementId: "G-J4MGT2J80C"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -39,7 +78,7 @@
         let modalAction = null;
 
         // ==========================================
-        // 1. BLOQUE: SEGURIDAD Y USUARIOS
+        // 1. BLOQUE: SEGURIDAD Y USUARIOS (PINS)
         // ==========================================
         const USERS = {
             "1111": ["secGarita", "secGaritaOut"], // Garita
@@ -49,15 +88,25 @@
             "0000": ["secGarita", "secBascula", "secDist", "secCarga", "secGaritaOut"] // Admin
         };
 
+        // Verificación de Sesión al cargar
+        window.onload = () => {
+            const sessionPin = localStorage.getItem('agripac_session');
+            if (sessionPin && USERS[sessionPin]) {
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                configurarMenu(sessionPin);
+            }
+        };
+
         window.login = () => {
-            const pin = document.getElementById('loginPin').value;
+            const pin = document.getElementById('loginPassword').value; // Usamos el campo de password
             if(USERS[pin]) {
                 localStorage.setItem('agripac_session', pin);
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
                 configurarMenu(pin);
             } else {
-                alert("PIN INCORRECTO");
+                alert("PIN O CONTRASEÑA INCORRECTA");
             }
         };
 
@@ -76,7 +125,7 @@
         };
 
         // ==========================================
-        // 2. BLOQUE: NAVEGACIÓN Y MODALES
+        // 2. BLOQUE: NAVEGACIÓN Y MODALES (REPETIDOS DE V2)
         // ==========================================
         window.mostrarSeccion = (id, el) => {
             document.querySelectorAll('.seccion-app').forEach(s => s.classList.add('hidden'));
@@ -119,12 +168,12 @@
                         estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada:0, pSalida:0, precintos: '-'
                     });
                     document.getElementById('inputGarita').value = '';
-                } else { alert("NO PLANIFICADO"); }
+                } else { alert("ID NO ENCONTRADO EN PLANIFICACIÓN"); }
             } catch (e) { alert("ERROR DE CONEXIÓN"); }
         };
 
         window.actualizar = (id, data) => update(ref(db, `vehiculos/${id}`), data);
-        window.borrar = (id) => { if(confirm("¿CONFIRMAR SALIDA?")) remove(ref(db, `vehiculos/${id}`)); };
+        window.borrar = (id) => { if(confirm("¿CONFIRMAR SALIDA FÍSICA?")) remove(ref(db, `vehiculos/${id}`)); };
 
         // ==========================================
         // 4. BLOQUE: RENDERIZADO (MONITOR)
@@ -138,7 +187,7 @@
             Object.keys(data).forEach(key => {
                 const v = data[key];
                 const card = (btn) => `
-                    <div class="bg-white border rounded-xl p-5 mb-4 shadow-sm card-entry">
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 mb-4 shadow-sm">
                         <div class="flex justify-between items-center mb-2">
                             <span class="text-[9px] font-black text-slate-300 tracking-widest uppercase italic">${v.estado.replace(/_/g,' ')}</span>
                             <span class="text-[10px] font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded uppercase">ID: ${v.codigo}</span>
@@ -159,7 +208,7 @@
                 }
                 else if(v.estado === 'DIST_DOCS_SALIDA') L.D.innerHTML += card(`<button onclick="actualizar('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-3 rounded-lg font-bold text-xs uppercase">Entregar Docs Salida</button>`);
                 else if(v.estado === 'PESAJE_SALIDA') L.B.innerHTML += card(`<button onclick="abrirModal('BÁSCULA','PESO SALIDA (KG)', (val)=>actualizar('${key}',{pSalida:val, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-3 rounded-lg font-bold text-xs uppercase">Registrar Pesaje Final</button>`);
-                else if(v.estado === 'LISTO_SALIDA') L.G.innerHTML += card(`<button onclick="borrar('${key}')" class="w-full bg-black text-white py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-xl">Confirmar Salida Física</button>`);
+                else if(v.estado === 'LISTO_SALIDA') L.G.innerHTML += card(`<button onclick="borrar('${key}')" class="w-full bg-black text-white py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all">Confirmar Salida Física</button>`);
             });
         });
 
@@ -170,24 +219,68 @@
         };
     </script>
 </head>
-<body>
+<body class="bg-slate-50 text-slate-700">
 
-    <div id="loginScreen" class="fixed inset-0 bg-[#003399] flex items-center justify-center p-6 z-[200]">
-        <div class="bg-white w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl text-center">
-            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-12 mx-auto mb-8">
-            <h2 class="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 mb-8">Acceso de Personal</h2>
-            <input id="loginPin" type="password" placeholder="PIN DE ACCESO" class="w-full p-5 bg-slate-100 rounded-2xl mb-6 text-center font-black tracking-widest outline-none focus:ring-2 focus:ring-blue-900">
-            <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-all">Ingresar al Patio</button>
+    <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
+        
+        <div class="absolute inset-0 z-0">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" 
+                 alt="Fondo Agripac" class="w-full h-full object-cover">
+            <div class="absolute inset-0 bg-blue-950/40"></div>
+        </div>
+
+        <div class="relative z-10 w-full h-full flex items-center p-8 lg:p-20">
+            
+            <div class="w-full lg:w-1/2 text-white pr-20 hidden lg:block">
+                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-16 mb-8 bg-white p-2 rounded-lg">
+                <h1 class="text-6xl font-black tracking-tighter mb-4 leading-tight">Su aliado <span class="text-[#FFB800]">NÚMERO UNO</span> en control de patio.</h1>
+                <p class="text-xl text-blue-50">Simplifique la logística de sus despachos con Agripac Patio.</p>
+            </div>
+
+            <div class="w-full lg:w-1/2 flex justify-center lg:justify-end">
+                <div class="bg-white p-12 rounded-3xl shadow-2xl w-full max-w-lg animate-fade border border-slate-100">
+                    
+                    <div class="flex justify-between items-center mb-10">
+                        <h2 class="text-4xl font-black text-slate-900 tracking-tighter italic">Login</h2>
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-10 lg:hidden">
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="relative">
+                            <input type="text" id="loginUser" placeholder="User ID" 
+                                   class="login-input w-full p-5 rounded-xl bg-slate-50 text-slate-800 outline-none text-lg">
+                        </div>
+
+                        <div class="relative">
+                            <input type="password" id="loginPassword" placeholder="PIN de Acceso" 
+                                   class="login-input w-full p-5 rounded-xl bg-slate-50 text-slate-800 outline-none text-lg tracking-widest font-black">
+                        </div>
+
+                        <div class="text-right">
+                            <a href="#" class="text-xs text-slate-400 hover:text-[#003399]">¿Olvidó su contraseña?</a>
+                        </div>
+
+                        <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-200 hover:bg-blue-800 active:scale-95 transition-all mt-4">
+                            Sign In
+                        </button>
+                    </div>
+
+                </div>
+            </div>
         </div>
     </div>
 
     <div id="mainApp" class="hidden">
+        
         <header class="bg-white border-b py-6 px-4 flex justify-between items-center sticky top-0 z-40">
-            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-8">
-            <button onclick="logout()" class="text-[8px] font-black uppercase text-red-500 tracking-widest bg-red-50 px-3 py-2 rounded-lg">Cerrar Sesión</button>
+            <div class="flex items-center gap-3">
+                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-8">
+                <h1 class="text-[9px] font-bold uppercase tracking-[0.4em] text-slate-400 italic">Patio Flow</h1>
+            </div>
+            <button onclick="logout()" class="text-[8px] font-black uppercase text-red-500 tracking-widest bg-red-50 px-3 py-2 rounded-lg hover:bg-red-100 transition-colors">Cerrar Sesión</button>
         </header>
 
-        <nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[81px] z-30">
+        <nav class="sticky top-[81px] z-30 bg-white border-b flex overflow-x-auto no-scrollbar">
             <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In)</button>
             <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Báscula</button>
             <button data-sec="secDist" onclick="mostrarSeccion('secDist', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Distribución</button>
@@ -195,36 +288,39 @@
             <button data-sec="secGaritaOut" onclick="mostrarSeccion('secGaritaOut', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (Out)</button>
         </nav>
 
-        <main class="max-w-xl mx-auto p-6">
-            <div id="secGarita" class="seccion-app hidden">
-                <div class="bg-white border p-8 rounded-[2rem] shadow-sm text-center">
-                    <button onclick="scanner()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black mb-6 text-xs shadow-lg">📷 ESCANEAR QR</button>
-                    <input id="inputGarita" type="text" placeholder="ID MANUAL" class="w-full p-4 bg-slate-50 border rounded-2xl mb-4 text-center font-black uppercase focus:ring-2 focus:ring-blue-900 outline-none">
-                    <button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded-2xl font-black uppercase text-[10px]">Validar Acceso</button>
+        <main class="max-w-xl mx-auto p-6 pb-24">
+            
+            <div id="secGarita" class="seccion-app animate-fade">
+                <div class="bg-white border border-slate-200 rounded-xl p-8 shadow-sm text-center">
+                    <button onclick="scanner()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black mb-6 text-[10px] uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-800 transition-all">📷 ESCANEAR QR</button>
+                    <div class="relative mb-6 text-center"><hr class="border-slate-100"><span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[8px] text-slate-300 font-bold uppercase tracking-widest">Ingreso Manual</span></div>
+                    <input id="inputGarita" type="text" placeholder="ID PLANIFICACIÓN" class="w-full p-4 bg-slate-50 border border-slate-200 rounded mb-4 text-center font-bold text-slate-800 focus:border-[#003399] outline-none uppercase transition-all shadow-inner">
+                    <button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-blue-50 transition-all">Validar Planificación</button>
                 </div>
             </div>
-            <div id="secBascula" class="seccion-app hidden"><div id="lBascula"></div></div>
-            <div id="secDist" class="seccion-app hidden"><div id="lDist"></div></div>
-            <div id="secCarga" class="seccion-app hidden"><div id="lCarga"></div></div>
-            <div id="secGaritaOut" class="seccion-app hidden"><div id="lGaritaOut"></div></div>
+
+            <div id="secBascula" class="seccion-app hidden animate-fade"><div id="lBascula"></div></div>
+            <div id="secDist" class="seccion-app hidden animate-fade"><div id="lDist"></div></div>
+            <div id="secCarga" class="seccion-app hidden animate-fade"><div id="lCarga"></div></div>
+            <div id="secGaritaOut" class="seccion-app hidden animate-fade"><div id="lGaritaOut"></div></div>
         </main>
     </div>
 
-    <div id="modalCont" class="fixed inset-0 modal-blur z-[300] hidden items-center justify-center p-6">
-        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl border-t-8 border-[#003399] animate-fade">
-            <h2 id="mTitle" class="text-center font-black text-slate-800 text-lg uppercase italic mb-1">TÍTULO</h2>
+    <div id="modalCont" class="fixed inset-0 modal-blur z-[300] items-center justify-center p-6 animate-fade">
+        <div class="bg-white w-full max-w-sm rounded-lg p-8 border-t-4 border-[#003399] shadow-2xl">
+            <h2 id="mTitle" class="text-center font-bold text-slate-800 text-lg uppercase mb-1">TÍTULO</h2>
             <p id="mLabel" class="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-6 italic">Instrucción</p>
-            <input id="mInput" type="text" class="w-full p-4 bg-slate-50 border rounded-xl mb-8 text-center font-black text-blue-900 outline-none uppercase focus:ring-2 focus:ring-blue-900">
+            <input id="mInput" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded mb-8 text-center font-bold text-slate-800 focus:border-[#003399] outline-none uppercase transition-all">
             <div class="flex gap-4">
-                <button onclick="cerrarModal()" class="flex-1 text-[10px] font-black uppercase text-slate-400">Cancelar</button>
-                <button onclick="confirmarModal()" class="flex-[2] bg-[#003399] text-white py-4 rounded-xl font-black text-xs uppercase shadow-xl transition-all">Confirmar</button>
+                <button onclick="cerrarModal()" class="flex-1 text-[9px] font-bold uppercase text-slate-400 tracking-widest">Cancelar</button>
+                <button onclick="confirmarModal()" class="flex-1 bg-[#003399] text-white py-3 rounded font-bold text-[9px] uppercase tracking-widest active:scale-95">Confirmar</button>
             </div>
         </div>
     </div>
 
-    <div id="qr-modal" class="fixed inset-0 bg-white z-[400] hidden flex-col items-center justify-center p-6">
-        <div id="qr-reader" class="w-full max-w-sm rounded-3xl overflow-hidden mb-8 border shadow-xl"></div>
-        <button onclick="location.reload()" class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Cerrar Cámara</button>
+    <div id="qr-modal" class="fixed inset-0 bg-white z-[400] flex flex-col items-center justify-center p-6 hidden">
+        <div id="qr-reader" class="w-full max-w-sm border-2 border-[#003399] rounded-lg overflow-hidden mb-8 shadow-xl"></div>
+        <button onclick="location.reload()" class="text-[9px] font-bold uppercase text-slate-400 tracking-widest bg-slate-100 px-6 py-2 rounded-full">Finalizar Cámara</button>
     </div>
 
 </body>
