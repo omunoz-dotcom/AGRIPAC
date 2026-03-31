@@ -10,11 +10,11 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap');
         :root { --agripac-blue: #003399; --bg-gray: #F4F7FA; }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-gray); }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-gray); margin: 0; padding: 0; }
         .tab-active { border-bottom: 4px solid var(--agripac-blue); color: var(--agripac-blue) !important; font-weight: 700; }
-        .modal-overlay { background: rgba(0, 51, 153, 0.15); backdrop-filter: blur(4px); }
+        .modal-overlay { background: rgba(0, 51, 153, 0.2); backdrop-filter: blur(5px); display: none; }
         .animate-fade { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
     <script type="module">
@@ -51,20 +51,20 @@
             document.getElementById('modalTitle').innerText = titulo;
             document.getElementById('modalLabel').innerText = etiqueta;
             document.getElementById('modalInput').value = '';
-            document.getElementById('mainModal').classList.replace('hidden', 'flex');
+            document.getElementById('mainModal').style.display = 'flex';
             modalAction = callback;
         };
 
-        window.cerrarModal = () => document.getElementById('mainModal').classList.replace('flex', 'hidden');
+        window.cerrarModal = () => document.getElementById('mainModal').style.display = 'none';
 
         window.confirmarAccion = () => {
             const val = document.getElementById('modalInput').value;
-            if(!val) return alert("Ingrese el dato solicitado");
+            if(!val) return alert("Complete el campo solicitado.");
             modalAction(val);
             cerrarModal();
         };
 
-        // --- PROCESOS ---
+        // --- FUNCIONES DE PROCESO ---
         window.registrarIngreso = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value;
             if(!id) return;
@@ -76,65 +76,68 @@
                 if(f) {
                     push(vehiculosRef, {
                         codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(),
-                        estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada:0, pSalida:0, precintos: '-'
+                        estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada: 0, pSalida: 0, precintos: '-'
                     });
                     document.getElementById('inputGarita').value = '';
-                } else { alert("ID No Planificado"); }
-            } catch (e) { alert("Error de red"); }
+                    alert("Ingreso Validado.");
+                } else { alert("ID No Planificado."); }
+            } catch (e) { alert("Error al conectar con la planificación."); }
         };
 
-        window.actualizarEstado = (id, dataActualizada) => {
-            update(ref(db, `vehiculos/${id}`), dataActualizada)
-                .catch(err => alert("Error al actualizar: " + err.message));
+        window.actualizarEstado = (id, data) => update(ref(db, `vehiculos/${id}`), data);
+
+        window.darSalidaFinal = (key) => {
+            if(confirm("¿Confirma que el vehículo ha salido físicamente de la planta?")) {
+                remove(ref(db, `vehiculos/${key}`))
+                .then(() => alert("Salida registrada. Registro eliminado."))
+                .catch(err => console.error("Error al borrar:", err));
+            }
         };
 
         // --- MONITOR EN TIEMPO REAL ---
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
-            const conts = {
+            const sections = {
                 'secBascula': document.getElementById('lBascula'),
                 'secDist': document.getElementById('lDist'),
                 'secCarga': document.getElementById('lCarga'),
                 'secGaritaOut': document.getElementById('lGaritaOut')
             };
-            
-            // Limpiar todos los contenedores para evitar duplicados
-            Object.values(conts).forEach(c => c.innerHTML = '');
-
+            Object.values(sections).forEach(s => s.innerHTML = '');
             if(!data) return;
 
             Object.keys(data).forEach(key => {
                 const v = data[key];
-                const card = (btn) => `
+                const card = (btnHTML) => `
                     <div class="bg-white border border-slate-200 rounded-xl p-5 mb-4 shadow-sm animate-fade">
                         <div class="flex justify-between items-start mb-2">
-                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: ${v.codigo}</span>
-                            <span class="text-[9px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold uppercase">${v.estado.replace(/_/g,' ')}</span>
+                            <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: ${v.codigo}</span>
+                            <span class="text-[8px] px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold uppercase tracking-tighter">${v.estado.replace(/_/g,' ')}</span>
                         </div>
-                        <h3 class="text-xl font-bold text-slate-800 mb-1 tracking-tight italic">${v.placa}</h3>
-                        <p class="text-[11px] text-slate-500 mb-4 font-semibold uppercase tracking-tighter">${v.chofer} | ${v.area}</p>
-                        ${v.anden !== '-' ? `<p class="text-[10px] mb-4 font-bold text-blue-900 uppercase tracking-widest">📍 ANDÉN: ${v.anden}</p>` : ''}
-                        ${btn}
+                        <h3 class="text-xl font-bold text-slate-800 mb-1 italic">${v.placa}</h3>
+                        <p class="text-[10px] text-slate-500 mb-4 font-bold uppercase">${v.chofer} | ${v.area}</p>
+                        ${v.anden !== '-' ? `<p class="text-[10px] mb-4 font-black text-blue-900 uppercase">📍 ANDÉN: ${v.anden}</p>` : ''}
+                        ${btnHTML}
                     </div>`;
 
-                if(v.estado === 'PESAJE_ENTRADA') conts.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO ENTRADA (KG)', (v)=>actualizarEstado('${key}', {pEntrada:v, estado:'DIST_DOCS_CARGA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest">Registrar Peso</button>`);
+                if(v.estado === 'PESAJE_ENTRADA') sections.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO ENTRADA (KG)', (v)=>actualizarEstado('${key}', {pEntrada:v, estado:'DIST_DOCS_CARGA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest shadow-md">Registrar Peso</button>`);
                 
-                else if(v.estado === 'DIST_DOCS_CARGA') conts.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGA_ASIGNAR_ANDEN'})" class="w-full bg-slate-700 text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest">Entregar Docs Carga</button>`);
+                else if(v.estado === 'DIST_DOCS_CARGA') sections.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGA_ASIGNAR_ANDEN'})" class="w-full bg-slate-700 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Entregar Docs Carga</button>`);
                 
-                else if(v.estado === 'CARGA_ASIGNAR_ANDEN') conts.secCarga.innerHTML += card(`<button onclick="abrirModal('CARGA', 'NÚMERO DE ANDÉN', (v)=>actualizarEstado('${key}', {anden:v, estado:'CARGA_LISTO_INICIO'}))" class="w-full bg-slate-800 text-white py-3 rounded font-bold text-[10px] uppercase">Asignar Andén</button>`);
+                else if(v.estado === 'CARGA_ASIGNAR_ANDEN') sections.secCarga.innerHTML += card(`<button onclick="abrirModal('CARGA', 'NÚMERO DE ANDÉN', (v)=>actualizarEstado('${key}', {anden:v, estado:'CARGA_LISTO_INICIO'}))" class="w-full bg-slate-800 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Asignar Andén</button>`);
                 
-                else if(v.estado === 'CARGA_LISTO_INICIO') conts.secCarga.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-3 rounded font-bold text-[10px] uppercase">Iniciar Carga</button>`);
+                else if(v.estado === 'CARGA_LISTO_INICIO') sections.secCarga.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Iniciar Carga</button>`);
                 
                 else if(v.estado === 'CARGANDO') {
                     const min = Math.floor((Date.now() - v.inicioCarga)/60000);
-                    conts.secCarga.innerHTML += card(`<div class="flex gap-2"><div class="flex-1 bg-red-50 text-red-600 text-[10px] font-bold flex items-center justify-center rounded">${min} MIN</div><button onclick="abrirModal('CARGA', 'PRECINTOS', (v)=>actualizarEstado('${key}', {precintos:v, estado:'DIST_DOCS_SALIDA'}))" class="flex-[2] bg-green-600 text-white py-3 rounded font-bold text-[10px] uppercase">Finalizar Carga</button></div>`);
+                    sections.secCarga.innerHTML += card(`<div class="flex gap-2"><div class="flex-1 bg-red-50 text-red-600 text-[10px] font-black flex items-center justify-center rounded">${min} MIN</div><button onclick="abrirModal('CARGA', 'NÚMERO PRECINTOS', (v)=>actualizarEstado('${key}', {precintos:v, estado:'DIST_DOCS_SALIDA'}))" class="flex-[2] bg-green-600 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Terminar Carga</button></div>`);
                 }
 
-                else if(v.estado === 'DIST_DOCS_SALIDA') conts.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-3 rounded font-bold text-[10px] uppercase">Entregar Docs Salida</button>`);
+                else if(v.estado === 'DIST_DOCS_SALIDA') sections.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Entregar Docs Salida</button>`);
                 
-                else if(v.estado === 'PESAJE_SALIDA') conts.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO SALIDA (KG)', (v)=>actualizarEstado('${key}', {pSalida:v, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase">Peso Salida</button>`);
+                else if(v.estado === 'PESAJE_SALIDA') sections.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO SALIDA (KG)', (v)=>actualizarEstado('${key}', {pSalida:v, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Peso Salida</button>`);
                 
-                else if(v.estado === 'LISTO_SALIDA') conts.secGaritaOut.innerHTML += card(`<button onclick="if(confirm('¿Confirmar salida?')) remove(ref(db, 'vehiculos/${key}'))" class="w-full bg-black text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest">Confirmar Salida</button>`);
+                else if(v.estado === 'LISTO_SALIDA') sections.secGaritaOut.innerHTML += card(`<button onclick="darSalidaFinal('${key}')" class="w-full bg-black text-white py-4 rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-xl">Confirmar Salida Física</button>`);
             });
         });
 
@@ -147,9 +150,9 @@
 </head>
 <body class="text-slate-700">
 
-    <header class="bg-white border-b border-slate-200 py-6 px-4 flex flex-col items-center">
+    <header class="bg-white border-b border-slate-200 py-6 flex flex-col items-center">
         <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-10 mb-2">
-        <h1 class="text-[9px] font-bold uppercase tracking-[0.4em] text-slate-400">Patio de Carga y Logística</h1>
+        <h1 class="text-[9px] font-bold uppercase tracking-[0.4em] text-slate-400 italic">Agripac Patio Flow</h1>
     </header>
 
     <nav class="sticky top-0 z-30 bg-white border-b border-slate-200 flex overflow-x-auto no-scrollbar">
@@ -163,10 +166,10 @@
     <main class="max-w-xl mx-auto p-6 pb-24">
         <div id="secGarita" class="seccion-app animate-fade">
             <div class="bg-white border border-slate-200 rounded-xl p-8 shadow-sm text-center">
-                <button onclick="scan()" class="w-full bg-[#003399] text-white py-4 rounded font-bold mb-6 text-[10px] uppercase tracking-widest">Cámara Escáner</button>
-                <div class="relative mb-6"><hr><span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[9px] text-slate-300 font-bold uppercase tracking-widest">Ingreso Manual</span></div>
-                <input id="inputGarita" type="text" placeholder="ID PLANIFICACIÓN" class="w-full p-4 bg-slate-50 border border-slate-200 rounded mb-4 text-center font-bold text-slate-800 focus:border-[#003399] outline-none uppercase transition-all">
-                <button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded font-bold uppercase text-[9px] tracking-widest hover:bg-blue-50">Validar Acceso</button>
+                <button onclick="scan()" class="w-full bg-[#003399] text-white py-4 rounded font-bold mb-6 text-[10px] uppercase tracking-widest shadow-lg">Cámara Escáner</button>
+                <div class="relative mb-6 text-center"><hr><span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[8px] text-slate-300 font-bold uppercase">Entrada Manual</span></div>
+                <input id="inputGarita" type="text" placeholder="INGRESE ID" class="w-full p-4 bg-slate-50 border border-slate-200 rounded mb-4 text-center font-bold text-slate-800 focus:border-[#003399] outline-none uppercase transition-all shadow-inner">
+                <button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded font-bold uppercase text-[9px] tracking-widest hover:bg-blue-50 transition-all">Validar Planificación</button>
             </div>
         </div>
 
@@ -176,10 +179,10 @@
         <div id="secGaritaOut" class="seccion-app hidden animate-fade"><div id="lGaritaOut"></div></div>
     </main>
 
-    <div id="mainModal" class="hidden fixed inset-0 modal-overlay z-[100] items-center justify-center p-6 animate-fade">
+    <div id="mainModal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-6 animate-fade">
         <div class="bg-white w-full max-w-sm rounded-lg p-8 border-t-4 border-[#003399] shadow-2xl">
             <h2 id="modalTitle" class="text-center font-bold text-slate-800 text-lg uppercase mb-1">TÍTULO</h2>
-            <p id="modalLabel" class="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-6">Instrucción</p>
+            <p id="modalLabel" class="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-6 italic">Instrucción</p>
             <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded mb-8 text-center font-bold text-slate-800 focus:border-[#003399] outline-none uppercase transition-all">
             <div class="flex gap-4">
                 <button onclick="cerrarModal()" class="flex-1 text-[9px] font-bold uppercase text-slate-400 tracking-widest">Cancelar</button>
@@ -190,7 +193,7 @@
 
     <div id="rc" class="hidden fixed inset-0 bg-white z-[110] flex flex-col items-center justify-center p-6">
         <div id="reader" class="w-full max-w-sm border border-slate-200 rounded-lg overflow-hidden mb-8"></div>
-        <button onclick="location.reload()" class="text-[9px] font-bold uppercase text-slate-400 tracking-widest">Cerrar Cámara</button>
+        <button onclick="location.reload()" class="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Cerrar Cámara</button>
     </div>
 
 </body>
