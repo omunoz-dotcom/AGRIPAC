@@ -3,25 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGRIPAC - Sistema de Control de Patio</title>
+    <title>AGRIPAC - Gestión Logística</title>
     <link rel="icon" type="image/png" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700;800&display=swap');
         :root { --agripac-blue: #003399; --bg-gray: #F4F7FA; }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-gray); margin: 0; padding: 0; }
-        .tab-active { border-bottom: 4px solid var(--agripac-blue); color: var(--agripac-blue) !important; font-weight: 700; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-gray); margin: 0; overflow: hidden; }
+        .tab-active { border-bottom: 4px solid var(--agripac-blue); color: var(--agripac-blue) !important; font-weight: 800; }
         .modal-overlay { background: rgba(0, 51, 153, 0.2); backdrop-filter: blur(5px); display: none; }
-        .animate-fade { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .hidden-auth { display: none !important; }
+        .card-anim { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+        // ==========================================
+        // MÓDULO 0: CONFIGURACIÓN Y NÚCLEO
+        // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyANUkQLUGrMh4ET1LdyYCucuZqqVKR39u4",
             authDomain: "agripac-control.firebaseapp.com",
@@ -37,9 +41,9 @@
         const vehiculosRef = ref(db, 'vehiculos');
         const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
 
-        let modalAction = null;
-
-        // SEGURIDAD POR PINES
+        // ==========================================
+        // MÓDULO 1: SEGURIDAD (AUTH)
+        // ==========================================
         const USERS = {
             "1111": ["secGarita", "secGaritaOut"],
             "2222": ["secBascula"],
@@ -64,50 +68,17 @@
                 const accesos = USERS[s];
                 document.querySelectorAll('.tab-btn').forEach(b => { if(!accesos.includes(b.dataset.sec)) b.classList.add('hidden-auth'); });
                 mostrarSeccion(accesos[0], document.querySelector(`[data-sec="${accesos[0]}"]`));
-                if(s === "0000") cargarDashboard();
+                if(s === "0000") moduloDashboard.init();
             }
         };
 
-        // --- LÓGICA DASHBOARD ---
-        async function cargarDashboard() {
-            try {
-                const res = await fetch(URL_SHEET_CSV);
-                const csv = await res.text();
-                const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1);
-                
-                onValue(vehiculosRef, (snapshot) => {
-                    const enPlanta = snapshot.val() || {};
-                    const listaPlan = document.getElementById('lDashboard');
-                    listaPlan.innerHTML = '';
-                    let contIngresos = 0;
+        window.logout = () => { localStorage.removeItem('agripac_session'); location.reload(); };
 
-                    filasPlan.forEach(f => {
-                        if(!f[0]) return;
-                        const idPlan = f[0].trim().toUpperCase();
-                        const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
-                        if(vReal) contIngresos++;
+        // ==========================================
+        // MÓDULO 2: INTERFAZ Y MODALES
+        // ==========================================
+        let modalAction = null;
 
-                        listaPlan.innerHTML += `
-                            <div class="flex items-center justify-between p-4 border-b border-slate-100 bg-white">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-lg">${vReal ? '✅' : '⏳'}</span>
-                                    <div>
-                                        <p class="font-bold text-slate-800 text-sm">${f[2]} <span class="font-normal text-slate-400">#${idPlan}</span></p>
-                                        <p class="text-[10px] text-slate-500 uppercase font-bold">${f[8]}</p>
-                                    </div>
-                                </div>
-                                <div class="text-right text-[10px] font-black uppercase ${vReal ? 'text-blue-700' : 'text-slate-300'}">
-                                    ${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}
-                                </div>
-                            </div>`;
-                    });
-                    document.getElementById('dashTotal').innerText = filasPlan.length;
-                    document.getElementById('dashIng').innerText = contIngresos;
-                });
-            } catch(e) { console.error("Error Dashboard", e); }
-        }
-
-        // --- NAVEGACIÓN ---
         window.mostrarSeccion = (id, el) => {
             document.querySelectorAll('.seccion-app').forEach(s => s.classList.add('hidden'));
             document.getElementById(id).classList.remove('hidden');
@@ -115,24 +86,68 @@
             if(el) el.classList.add('tab-active');
         };
 
-        // --- MODALES ---
-        window.abrirModal = (titulo, etiqueta, callback) => {
+        window.uiModal = (titulo, etiqueta, callback) => {
             document.getElementById('modalTitle').innerText = titulo;
             document.getElementById('modalLabel').innerText = etiqueta;
             document.getElementById('modalInput').value = '';
             document.getElementById('mainModal').style.display = 'flex';
             modalAction = callback;
         };
+
         window.cerrarModal = () => document.getElementById('mainModal').style.display = 'none';
-        window.confirmarAccion = () => {
+
+        window.confirmarModal = () => {
             const val = document.getElementById('modalInput').value;
             if(!val) return;
             modalAction(val);
             cerrarModal();
         };
 
-        // --- PROCESOS ---
-        window.registrarIngreso = async (idManual = null) => {
+        // ==========================================
+        // MÓDULO 3: DASHBOARD (VISUALIZACIÓN)
+        // ==========================================
+        const moduloDashboard = {
+            init: async function() {
+                try {
+                    const res = await fetch(URL_SHEET_CSV);
+                    const csv = await res.text();
+                    const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1);
+                    
+                    onValue(vehiculosRef, (snapshot) => {
+                        const enPlanta = snapshot.val() || {};
+                        const cont = document.getElementById('lDashboard');
+                        cont.innerHTML = '';
+                        let ingresados = 0;
+
+                        filasPlan.forEach(f => {
+                            if(!f[0]) return;
+                            const idPlan = f[0].trim().toUpperCase();
+                            const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
+                            if(vReal) ingresados++;
+
+                            cont.innerHTML += `
+                                <div class="flex items-center justify-between p-4 border-b bg-white">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-lg">${vReal ? '✅' : '⏳'}</span>
+                                        <div>
+                                            <p class="font-bold text-slate-800 text-sm">${f[2]} <span class="text-slate-400 font-normal">#${f[0]}</span></p>
+                                            <p class="text-[9px] font-bold text-slate-400 uppercase">${f[8]}</p>
+                                        </div>
+                                    </div>
+                                    <p class="text-[9px] font-black uppercase text-blue-800">${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}</p>
+                                </div>`;
+                        });
+                        document.getElementById('dashTotal').innerText = filasPlan.length;
+                        document.getElementById('dashIng').innerText = ingresados;
+                    });
+                } catch(e) { console.error("Error Dashboard", e); }
+            }
+        };
+
+        // ==========================================
+        // MÓDULO 4: PROCESOS LOGÍSTICOS
+        // ==========================================
+        window.procGarita = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value;
             if(!id) return;
             const res = await fetch(URL_SHEET_CSV);
@@ -141,84 +156,90 @@
             if(f) {
                 push(vehiculosRef, {
                     codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(),
-                    estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada: 0, pSalida: 0, precintos: '-'
+                    estado: 'PESAJE_ENTRADA', fecha: new Date().toLocaleString(), anden: '-', pEntrada: 0, pSalida: 0
                 });
                 document.getElementById('inputGarita').value = '';
-            } else { alert("ID No Planificado"); }
+            } else alert("ID No Planificado");
         };
 
-        window.actualizarEstado = (id, data) => update(ref(db, `vehiculos/${id}`), data);
-        window.darSalidaFinal = (key) => { if(confirm("¿Salida física?")) remove(ref(db, `vehiculos/${key}`)); };
+        window.procUpdate = (id, data) => update(ref(db, `vehiculos/${id}`), data);
+        window.procDelete = (id) => { if(confirm("¿Confirmar salida física?")) remove(ref(db, `vehiculos/${id}`)); };
 
-        // --- MONITOR ---
+        // ==========================================
+        // MÓDULO 5: MONITOR (VISTA EN TIEMPO REAL)
+        // ==========================================
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
-            const sections = { 'secBascula': document.getElementById('lBascula'), 'secDist': document.getElementById('lDist'), 'secCarga': document.getElementById('lCarga'), 'secGaritaOut': document.getElementById('lGaritaOut') };
-            Object.values(sections).forEach(s => s.innerHTML = '');
+            const L = { 
+                'secBascula': document.getElementById('lBascula'), 
+                'secDist': document.getElementById('lDist'), 
+                'secCarga': document.getElementById('lCarga'), 
+                'secGaritaOut': document.getElementById('lGaritaOut') 
+            };
+            Object.values(L).forEach(s => s.innerHTML = '');
             if(!data) return;
 
             Object.keys(data).forEach(key => {
                 const v = data[key];
-                const card = (btnHTML) => `
-                    <div class="bg-white border border-slate-200 rounded-xl p-5 mb-4 shadow-sm animate-fade">
-                        <div class="flex justify-between items-start mb-2">
-                            <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID: ${v.codigo}</span>
-                            <span class="text-[8px] px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold uppercase tracking-tighter">${v.estado.replace(/_/g,' ')}</span>
+                const card = (btn) => `
+                    <div class="bg-white border rounded-xl p-5 mb-4 shadow-sm card-anim">
+                        <div class="flex justify-between mb-2">
+                            <span class="text-[9px] font-bold text-slate-300 uppercase italic tracking-widest">${v.estado.replace(/_/g,' ')}</span>
+                            <span class="text-[10px] font-bold text-blue-900">ID: ${v.codigo}</span>
                         </div>
-                        <h3 class="text-xl font-bold text-slate-800 mb-1 italic">${v.placa}</h3>
-                        <p class="text-[10px] text-slate-500 mb-4 font-bold uppercase">${v.chofer} | ${v.area}</p>
-                        ${v.anden !== '-' ? `<p class="text-[10px] mb-4 font-black text-blue-900 uppercase">📍 ANDÉN: ${v.anden}</p>` : ''}
-                        ${btnHTML}
+                        <h3 class="text-xl font-bold text-slate-800 mb-1 italic tracking-tight">${v.placa}</h3>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase mb-4">${v.chofer} | ${v.area}</p>
+                        ${v.anden !== '-' ? `<p class="text-[10px] font-black text-blue-700 mb-4 uppercase">📍 Andén: ${v.anden}</p>` : ''}
+                        ${btn}
                     </div>`;
 
-                if(v.estado === 'PESAJE_ENTRADA') sections.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO ENTRADA (KG)', (v)=>actualizarEstado('${key}', {pEntrada:v, estado:'DIST_DOCS_CARGA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest shadow-md">Registrar Peso</button>`);
-                else if(v.estado === 'DIST_DOCS_CARGA') sections.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGA_ASIGNAR_ANDEN'})" class="w-full bg-slate-700 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Entregar Docs Carga</button>`);
-                else if(v.estado === 'CARGA_ASIGNAR_ANDEN') sections.secCarga.innerHTML += card(`<button onclick="abrirModal('CARGA', 'NÚMERO DE ANDÉN', (v)=>actualizarEstado('${key}', {anden:v, estado:'CARGA_LISTO_INICIO'}))" class="w-full bg-slate-800 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Asignar Andén</button>`);
-                else if(v.estado === 'CARGA_LISTO_INICIO') sections.secCarga.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Iniciar Carga</button>`);
+                if(v.estado === 'PESAJE_ENTRADA') L.secBascula.innerHTML += card(`<button onclick="uiModal('BÁSCULA','PESO ENTRADA (KG)', (v)=>procUpdate('${key}',{pEntrada:v, estado:'DIST_DOCS_CARGA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase shadow-lg">Registrar Peso</button>`);
+                else if(v.estado === 'DIST_DOCS_CARGA') L.secDist.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'CARGA_ASIGNAR_ANDEN'})" class="w-full bg-slate-700 text-white py-3 rounded font-bold text-[10px] uppercase">Entregar Docs Carga</button>`);
+                else if(v.estado === 'CARGA_ASIGNAR_ANDEN') L.secCarga.innerHTML += card(`<button onclick="uiModal('CARGA','NÚMERO DE ANDÉN', (v)=>procUpdate('${key}',{anden:v, estado:'CARGA_LISTO_INICIO'}))" class="w-full bg-slate-800 text-white py-3 rounded font-bold text-[10px] uppercase">Asignar Andén</button>`);
+                else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-3 rounded font-bold text-[10px] uppercase tracking-widest">Iniciar Carga</button>`);
                 else if(v.estado === 'CARGANDO') {
-                    const min = Math.floor((Date.now() - v.inicioCarga)/60000);
-                    sections.secCarga.innerHTML += card(`<div class="flex gap-2"><div class="flex-1 bg-red-50 text-red-600 text-[10px] font-black flex items-center justify-center rounded">${min} MIN</div><button onclick="abrirModal('CARGA', 'NÚMERO PRECINTOS', (v)=>actualizarEstado('${key}', {precintos:v, estado:'DIST_DOCS_SALIDA'}))" class="flex-[2] bg-green-600 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Terminar Carga</button></div>`);
+                    const m = Math.floor((Date.now() - v.inicioCarga)/60000);
+                    L.secCarga.innerHTML += card(`<div class="flex gap-2"><div class="flex-1 bg-red-50 text-red-600 font-bold text-[10px] flex items-center justify-center rounded">${m} MIN</div><button onclick="uiModal('CARGA','PRECINTOS', (v)=>procUpdate('${key}',{precintos:v, estado:'DIST_DOCS_SALIDA'}))" class="flex-[2] bg-green-600 text-white py-3 rounded font-bold text-[10px] uppercase">Cerrar Carga</button></div>`);
                 }
-                else if(v.estado === 'DIST_DOCS_SALIDA') sections.secDist.innerHTML += card(`<button onclick="actualizarEstado('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Entregar Docs Salida</button>`);
-                else if(v.estado === 'PESAJE_SALIDA') sections.secBascula.innerHTML += card(`<button onclick="abrirModal('BÁSCULA', 'PESO SALIDA (KG)', (v)=>actualizarEstado('${key}', {pSalida:v, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase shadow-md">Peso Salida</button>`);
-                else if(v.estado === 'LISTO_SALIDA') sections.secGaritaOut.innerHTML += card(`<button onclick="darSalidaFinal('${key}')" class="w-full bg-black text-white py-4 rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-xl">Confirmar Salida Física</button>`);
+                else if(v.estado === 'DIST_DOCS_SALIDA') L.secDist.innerHTML += card(`<button onclick="procUpdate('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-3 rounded font-bold text-[10px] uppercase">Entregar Docs Salida</button>`);
+                else if(v.estado === 'PESAJE_SALIDA') L.secBascula.innerHTML += card(`<button onclick="uiModal('BÁSCULA','PESO SALIDA (KG)', (v)=>procUpdate('${key}',{pSalida:v, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-3 rounded font-bold text-[10px] uppercase shadow-lg">Peso Salida</button>`);
+                else if(v.estado === 'LISTO_SALIDA') L.secGaritaOut.innerHTML += card(`<button onclick="procDelete('${key}')" class="w-full bg-black text-white py-4 rounded font-bold text-[10px] uppercase tracking-[0.2em] shadow-xl">Confirmar Salida</button>`);
             });
         });
 
-        window.scan = () => {
+        window.uiScanner = () => {
             const h = new Html5Qrcode("reader");
             document.getElementById('rc').classList.remove('hidden');
-            h.start({facingMode:"environment"}, {fps:10, qrbox:250}, (t)=>{ h.stop(); document.getElementById('rc').classList.add('hidden'); registrarIngreso(t); });
+            h.start({facingMode:"environment"}, {fps:10, qrbox:250}, (t)=>{ h.stop(); document.getElementById('rc').classList.add('hidden'); procGarita(t); });
         };
-        window.logout = () => { localStorage.removeItem('agripac_session'); location.reload(); };
     </script>
 </head>
 <body>
 
     <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
         <div class="absolute inset-0 z-0"><img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover"><div class="absolute inset-0 bg-blue-950/40"></div></div>
-        <div class="relative z-10 w-full h-full flex items-center p-8 lg:p-20">
+        <div class="relative z-10 w-full h-full flex items-center p-12">
             <div class="w-1/2 text-white hidden lg:block pr-20">
-                <h1 class="text-6xl font-black mb-4">SISTEMA <span class="text-amber-500">AGRIPAC</span></h1>
-                <p class="text-xl">Gestión de Patio y Logística de Despachos.</p>
+                <h1 class="text-6xl font-black italic mb-4">SISTEMA <span class="text-amber-500 underline">AGRIPAC</span></h1>
+                <p class="text-xl font-bold opacity-80 uppercase tracking-widest">Control de Patio y Flujos Logísticos</p>
             </div>
             <div class="w-full lg:w-1/2 flex justify-end">
-                <div class="bg-white p-12 rounded-3xl shadow-2xl w-full max-w-lg">
+                <div class="bg-white p-12 rounded-[2.5rem] shadow-2xl w-full max-w-lg border border-white/20">
                     <h2 class="text-4xl font-black text-slate-900 mb-8 italic">Login</h2>
-                    <input type="password" id="loginPassword" placeholder="PIN de Acceso" class="w-full p-5 bg-slate-50 border rounded-xl mb-6 text-center font-black tracking-widest outline-none focus:border-[#003399]">
-                    <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-xl font-black uppercase text-xs shadow-xl">Sign In</button>
+                    <input type="password" id="loginPassword" placeholder="PIN de Acceso" class="w-full p-5 bg-slate-50 border rounded-2xl mb-6 text-center font-black tracking-widest outline-none focus:border-[#003399] text-xl">
+                    <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl hover:bg-blue-800 transition-all">Sign In</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="mainApp" class="hidden">
-        <header class="bg-white border-b py-6 px-4 flex flex-col items-center sticky top-0 z-40">
-            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-10 mb-2">
-            <button onclick="logout()" class="absolute right-4 top-1/2 -translate-y-1/2 text-[8px] font-black text-red-500 bg-red-50 px-3 py-2 rounded-lg">LOGOUT</button>
+    <div id="mainApp" class="hidden h-screen flex flex-col">
+        <header class="bg-white border-b py-5 px-6 flex justify-between items-center sticky top-0 z-40">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-8">
+            <button onclick="logout()" class="text-[8px] font-black uppercase text-red-500 bg-red-50 px-3 py-2 rounded-lg">Cerrar Sesión</button>
         </header>
 
-        <nav class="sticky top-[96px] z-30 bg-white border-b flex overflow-x-auto no-scrollbar">
+        <nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[77px] z-30">
             <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard</button>
             <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In)</button>
             <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Báscula</button>
@@ -227,44 +248,45 @@
             <button data-sec="secGaritaOut" onclick="mostrarSeccion('secGaritaOut', this)" class="tab-btn flex-none px-6 py-4 text-[9px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (Out)</button>
         </nav>
 
-        <main class="max-w-xl mx-auto p-6 pb-24">
-            <div id="secDashboard" class="seccion-app animate-fade hidden">
-                <div class="grid grid-cols-2 gap-4 mb-6 text-center">
-                    <div class="bg-blue-900 text-white p-4 rounded-2xl"><p class="text-[9px] font-bold uppercase opacity-60">Planificados</p><p id="dashTotal" class="text-3xl font-black">0</p></div>
-                    <div class="bg-white border p-4 rounded-2xl"><p class="text-[9px] font-bold uppercase text-slate-400">Ingresados</p><p id="dashIng" class="text-3xl font-black text-blue-900">0</p></div>
+        <main class="flex-grow overflow-y-auto p-6">
+            <div id="secDashboard" class="seccion-app hidden max-w-4xl mx-auto">
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-blue-900 text-white p-6 rounded-3xl"><p class="text-[9px] font-bold uppercase opacity-60">Planificados</p><p id="dashTotal" class="text-4xl font-black">0</p></div>
+                    <div class="bg-white border p-6 rounded-3xl"><p class="text-[9px] font-bold uppercase text-slate-400">Ingresados</p><p id="dashIng" class="text-4xl font-black text-blue-900">0</p></div>
                 </div>
-                <div id="lDashboard" class="bg-white border rounded-2xl overflow-hidden shadow-sm"></div>
+                <div id="lDashboard" class="bg-white border rounded-3xl overflow-hidden shadow-sm"></div>
             </div>
 
-            <div id="secGarita" class="seccion-app animate-fade">
-                <div class="bg-white border rounded-xl p-8 shadow-sm text-center">
-                    <button onclick="scan()" class="w-full bg-[#003399] text-white py-4 rounded font-bold mb-6 text-[10px] uppercase shadow-lg">Cámara Escáner</button>
-                    <input id="inputGarita" type="text" placeholder="ID MANUAL" class="w-full p-4 bg-slate-50 border rounded mb-4 text-center font-bold outline-none focus:border-[#003399] uppercase">
-                    <button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded font-bold uppercase text-[9px]">Validar Acceso</button>
+            <div id="secGarita" class="seccion-app hidden max-w-xl mx-auto">
+                <div class="bg-white border p-8 rounded-3xl text-center shadow-sm">
+                    <button onclick="uiScanner()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black mb-6 text-xs shadow-lg">📷 ESCANEAR QR</button>
+                    <input id="inputGarita" type="text" placeholder="ID MANUAL" class="w-full p-4 bg-slate-50 border rounded-2xl mb-4 text-center font-black uppercase outline-none focus:border-[#003399]">
+                    <button onclick="procGarita()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded-2xl font-black uppercase text-[10px]">Validar Acceso</button>
                 </div>
             </div>
-            <div id="secBascula" class="seccion-app hidden"><div id="lBascula"></div></div>
-            <div id="secDist" class="seccion-app hidden"><div id="lDist"></div></div>
-            <div id="secCarga" class="seccion-app hidden"><div id="lCarga"></div></div>
-            <div id="secGaritaOut" class="seccion-app hidden"><div id="lGaritaOut"></div></div>
+            <div id="secBascula" class="seccion-app hidden max-w-xl mx-auto"><div id="lBascula"></div></div>
+            <div id="secDist" class="seccion-app hidden max-w-xl mx-auto"><div id="lDist"></div></div>
+            <div id="secCarga" class="seccion-app hidden max-w-xl mx-auto"><div id="lCarga"></div></div>
+            <div id="secGaritaOut" class="seccion-app hidden max-w-xl mx-auto"><div id="lGaritaOut"></div></div>
         </main>
     </div>
 
     <div id="mainModal" class="modal-overlay fixed inset-0 z-[100] items-center justify-center p-6 animate-fade">
-        <div class="bg-white w-full max-w-sm rounded-lg p-8 border-t-4 border-[#003399] shadow-2xl">
-            <h2 id="modalTitle" class="text-center font-bold text-slate-800 text-lg uppercase mb-1 tracking-tighter">TÍTULO</h2>
-            <p id="modalLabel" class="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-6">Instrucción</p>
-            <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded mb-8 text-center font-bold text-slate-800 focus:border-[#003399] outline-none uppercase">
+        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 border-t-4 border-[#003399] shadow-2xl">
+            <h2 id="modalTitle" class="text-center font-black text-slate-800 text-lg uppercase mb-1 tracking-tighter italic">TÍTULO</h2>
+            <p id="modalLabel" class="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-6 italic">Instrucción</p>
+            <input id="modalInput" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-8 text-center font-black text-blue-900 outline-none focus:border-[#003399] transition-all uppercase">
             <div class="flex gap-4">
                 <button onclick="cerrarModal()" class="flex-1 text-[9px] font-bold uppercase text-slate-400 tracking-widest">Cancelar</button>
-                <button onclick="confirmarAccion()" class="flex-1 bg-[#003399] text-white py-3 rounded font-bold text-[9px] uppercase">Confirmar</button>
+                <button onclick="confirmarModal()" class="flex-1 bg-[#003399] text-white py-3 rounded-xl font-bold text-[9px] uppercase shadow-lg">Confirmar</button>
             </div>
         </div>
     </div>
 
     <div id="rc" class="hidden fixed inset-0 bg-white z-[110] flex flex-col items-center justify-center p-6">
-        <div id="reader" class="w-full max-w-sm border rounded-lg overflow-hidden mb-8"></div>
+        <div id="reader" class="w-full max-w-sm border rounded-2xl overflow-hidden mb-8 shadow-xl"></div>
         <button onclick="location.reload()" class="text-[9px] font-bold uppercase text-slate-400 tracking-widest">Finalizar Cámara</button>
     </div>
+
 </body>
 </html>
