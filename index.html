@@ -116,46 +116,64 @@
             cerrarModal();
         };
 
-        // ==========================================
-        // MÓDULO 3: DASHBOARD LOGÍSTICO
-        // ==========================================
-        const moduloDashboard = {
-            init: async function() {
-                try {
-                    const res = await fetch(URL_SHEET_CSV);
-                    const csv = await res.text();
-                    const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1);
-                    
-                    onValue(vehiculosRef, (snapshot) => {
-                        const enPlanta = snapshot.val() || {};
-                        const cont = document.getElementById('lDashboard');
-                        cont.innerHTML = '';
-                        let ingresados = 0;
+      // ==========================================
+// MÓDULO 3: DASHBOARD (CON FILTRO DE FECHA)
+// ==========================================
+const moduloDashboard = {
+    init: async function() {
+        try {
+            // 1. Obtener fecha de hoy en formato DD/MM/YYYY (ajusta según tu Excel)
+            const hoy = new Date();
+            const diaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
+                           String(hoy.getMonth() + 1).padStart(2, '0') + "/" + 
+                           hoy.getFullYear();
 
-                        filasPlan.forEach(f => {
-                            if(!f[0]) return;
-                            const idPlan = f[0].trim().toUpperCase();
-                            const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
-                            if(vReal) ingresados++;
+            const res = await fetch(URL_SHEET_CSV);
+            const csv = await res.text();
+            
+            // Filtramos las filas: que tengan datos y que la fecha (columna 1 del Excel) sea hoy
+            // Nota: f[1] asume que la fecha está en la segunda columna del Sheets
+            const filasPlan = csv.split("\n")
+                                .map(r => r.split(","))
+                                .slice(1)
+                                .filter(f => f[1] && f[1].trim() === diaHoy);
+            
+            onValue(vehiculosRef, (snapshot) => {
+                const enPlanta = snapshot.val() || {};
+                const cont = document.getElementById('lDashboard');
+                cont.innerHTML = '';
+                let ingresados = 0;
 
-                            cont.innerHTML += `
-                                <div class="flex items-center justify-between p-4 border-b bg-white italic">
-                                    <div class="flex items-center gap-3">
-                                        <span class="text-lg">${vReal ? '✅' : '⏳'}</span>
-                                        <div>
-                                            <p class="font-bold text-slate-800 text-sm">${f[2]} <span class="text-slate-400 font-normal">#${f[0]}</span></p>
-                                            <p class="text-[9px] font-black text-slate-400 uppercase">${f[8]}</p>
-                                        </div>
-                                    </div>
-                                    <p class="text-[10px] font-black uppercase text-blue-800">${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}</p>
-                                </div>`;
-                        });
-                        document.getElementById('dashTotal').innerText = filasPlan.length;
-                        document.getElementById('dashIng').innerText = ingresados;
-                    });
-                } catch(e) { console.error(e); }
-            }
-        };
+                if (filasPlan.length === 0) {
+                    cont.innerHTML = `<div class="p-10 text-center text-slate-400 font-bold uppercase text-[10px]">No hay despachos planificados para hoy (${diaHoy})</div>`;
+                }
+
+                filasPlan.forEach(f => {
+                    const idPlan = f[0].trim().toUpperCase();
+                    const vReal = Object.values(enPlanta).find(v => v.codigo.toUpperCase() === idPlan);
+                    if(vReal) ingresados++;
+
+                    cont.innerHTML += `
+                        <div class="flex items-center justify-between p-4 border-b bg-white italic animate-fade">
+                            <div class="flex items-center gap-3">
+                                <span class="text-lg">${vReal ? '✅' : '⏳'}</span>
+                                <div>
+                                    <p class="font-bold text-slate-800 text-sm">${f[2]} <span class="text-slate-400 font-normal">#${f[0]}</span></p>
+                                    <p class="text-[9px] font-black text-slate-400 uppercase">${f[8]}</p>
+                                </div>
+                            </div>
+                            <p class="text-[10px] font-black uppercase text-blue-800">${vReal ? vReal.estado.replace(/_/g,' ') : 'Pendiente'}</p>
+                        </div>`;
+                });
+                document.getElementById('dashTotal').innerText = filasPlan.length;
+                document.getElementById('dashIng').innerText = ingresados;
+            });
+        } catch(e) { 
+            console.error("Error en Dashboard:", e);
+            document.getElementById('lDashboard').innerHTML = `<div class="p-4 text-red-500 text-xs">Error cargando planificación.</div>`;
+        }
+    }
+};
 
         // ==========================================
         // MÓDULO 4: LÓGICA DE PROCESOS
