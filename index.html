@@ -41,54 +41,62 @@
         const vehiculosRef = ref(db, 'vehiculos');
         const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
 
-     // ==========================================
-// MÓDULO 1: SEGURIDAD (CONEXIÓN REALTIME)
+// ==========================================
+// MÓDULO 1: SEGURIDAD (VERSIÓN BLINDADA)
 // ==========================================
 import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 window.login = async () => {
+    // 1. Capturamos los datos del formulario
     const emailInput = document.getElementById('loginUser').value.trim().toLowerCase();
-    const passInput = document.getElementById('loginPassword').value;
+    const passInput = document.getElementById('loginPassword').value.trim();
     const btn = document.querySelector('button[onclick="login()"]');
+
+    if (!emailInput || !passInput) {
+        alert("Por favor ingrese correo y contraseña");
+        return;
+    }
 
     btn.innerText = "VERIFICANDO...";
     btn.disabled = true;
 
     try {
         const dbRef = ref(getDatabase());
-        // Buscamos en el nodo "Usuarios" (minúscula/mayúscula debe coincidir con tu foto)
+        // USAMOS "Usuarios" con U MAYÚSCULA como está en tu Firebase
         const snapshot = await get(child(dbRef, 'Usuarios'));
         
         if (snapshot.exists()) {
             const usuarios = snapshot.val();
             let usuarioEncontrado = null;
 
+            // Recorremos los usuarios (U1, U2...)
             for (let id in usuarios) {
-                // Validación exacta contra tu estructura de Firebase
-                if (usuarios[id].email === emailInput && usuarios[id].pass === passInput) {
-                    usuarioEncontrado = usuarios[id];
+                const u = usuarios[id];
+                // Comparamos email y pass (asegúrate que en Firebase digan "email" y "pass" en minúscula)
+                if (u.email && u.email.toLowerCase() === emailInput && u.pass === passInput) {
+                    usuarioEncontrado = u;
                     break;
                 }
             }
 
             if (usuarioEncontrado) {
-                // Guardamos la sesión y los roles asignados
+                console.log("Acceso concedido:", usuarioEncontrado);
                 localStorage.setItem('agripac_session', JSON.stringify(usuarioEncontrado));
                 location.reload();
             } else {
-                alert("Correo o Clave incorrectos. Verifique mayúsculas y minúsculas.");
-                btn.innerText = "Sign In";
+                alert("DATOS INCORRECTOS:\n1. Verifique que el correo sea exacto.\n2. Verifique la contraseña.");
+                btn.innerText = "INGRESAR AL SISTEMA";
                 btn.disabled = false;
             }
         } else {
-            alert("Error: No se encontró la base de datos de Usuarios.");
-            btn.innerText = "Sign In";
+            alert("ERROR CRÍTICO: No se encontró la carpeta 'Usuarios' en Firebase.");
+            btn.innerText = "INGRESAR AL SISTEMA";
             btn.disabled = false;
         }
     } catch (error) {
-        console.error(error);
-        alert("Error de conexión con Firebase.");
-        btn.innerText = "Sign In";
+        console.error("Error en login:", error);
+        alert("ERROR DE CONEXIÓN: Verifique su internet o reglas de Firebase.");
+        btn.innerText = "INGRESAR AL SISTEMA";
         btn.disabled = false;
     }
 };
@@ -100,19 +108,25 @@ window.onload = () => {
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('mainApp').classList.remove('hidden');
         
-        // Aplicamos los roles: secDashboard, secGarita, etc.
+        // Aplicamos roles
         const accesos = user.roles || [];
         document.querySelectorAll('.tab-btn').forEach(b => { 
             if(!accesos.includes(b.dataset.sec)) b.classList.add('hidden-auth'); 
         });
         
-        // Mostrar la primera pestaña permitida
-        if (accesos.length > 0) {
-            mostrarSeccion(accesos[0], document.querySelector(`[data-sec="${accesos[0]}"]`));
+        // Mostrar la primera sección permitida
+        const botonesVisibles = document.querySelectorAll('.tab-btn:not(.hidden-auth)');
+        if (botonesVisibles.length > 0) {
+            const primeraSeccion = botonesVisibles[0].dataset.sec;
+            mostrarSeccion(primeraSeccion, botonesVisibles[0]);
+            
+            // Si el dashboard está permitido, iniciarlo
+            if(accesos.includes("secDashboard")) {
+                setTimeout(() => {
+                    if(typeof moduloDashboard !== 'undefined') moduloDashboard.init();
+                }, 500);
+            }
         }
-        
-        // Inicializar Dashboard si el usuario tiene permiso
-        if(accesos.includes("secDashboard")) moduloDashboard.init();
     }
 };
 
