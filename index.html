@@ -41,46 +41,81 @@
         const vehiculosRef = ref(db, 'vehiculos');
         const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
 
-       // ==========================================
-// MÓDULO 1: SEGURIDAD (AUTH) - ACTUALIZADO
+     // ==========================================
+// MÓDULO 1: SEGURIDAD (CONEXIÓN REALTIME)
 // ==========================================
-const USERS_DB = {
-    "admin": { pass: "agripac2026", roles: ["secDashboard", "secGarita", "secBascula", "secDist", "secCarga", "secGaritaOut"] },
-    "garita1": { pass: "g123", roles: ["secGarita", "secGaritaOut"] },
-    "bascula1": { pass: "b123", roles: ["secBascula"] },
-    "distribucion1": { pass: "d123", roles: ["secDist"] },
-    "carga1": { pass: "c123", roles: ["secCarga"] }
-};
+import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-window.login = () => {
-    const user = document.getElementById('loginUser').value.toLowerCase();
-    const pass = document.getElementById('loginPassword').value;
+window.login = async () => {
+    const emailInput = document.getElementById('loginUser').value.trim().toLowerCase();
+    const passInput = document.getElementById('loginPassword').value;
+    const btn = document.querySelector('button[onclick="login()"]');
 
-    if (USERS_DB[user] && USERS_DB[user].pass === pass) {
-        localStorage.setItem('agripac_session', user);
-        location.reload();
-    } else {
-        alert("USUARIO O CONTRASEÑA INCORRECTOS");
+    btn.innerText = "VERIFICANDO...";
+    btn.disabled = true;
+
+    try {
+        const dbRef = ref(getDatabase());
+        // Buscamos en el nodo "Usuarios" (minúscula/mayúscula debe coincidir con tu foto)
+        const snapshot = await get(child(dbRef, 'Usuarios'));
+        
+        if (snapshot.exists()) {
+            const usuarios = snapshot.val();
+            let usuarioEncontrado = null;
+
+            for (let id in usuarios) {
+                // Validación exacta contra tu estructura de Firebase
+                if (usuarios[id].email === emailInput && usuarios[id].pass === passInput) {
+                    usuarioEncontrado = usuarios[id];
+                    break;
+                }
+            }
+
+            if (usuarioEncontrado) {
+                // Guardamos la sesión y los roles asignados
+                localStorage.setItem('agripac_session', JSON.stringify(usuarioEncontrado));
+                location.reload();
+            } else {
+                alert("Correo o Clave incorrectos. Verifique mayúsculas y minúsculas.");
+                btn.innerText = "Sign In";
+                btn.disabled = false;
+            }
+        } else {
+            alert("Error: No se encontró la base de datos de Usuarios.");
+            btn.innerText = "Sign In";
+            btn.disabled = false;
+        }
+    } catch (error) {
+        console.error(error);
+        alert("Error de conexión con Firebase.");
+        btn.innerText = "Sign In";
+        btn.disabled = false;
     }
 };
 
 window.onload = () => {
-    const sessionUser = localStorage.getItem('agripac_session');
-    if (sessionUser && USERS_DB[sessionUser]) {
+    const sessionData = localStorage.getItem('agripac_session');
+    if (sessionData) {
+        const user = JSON.parse(sessionData);
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('mainApp').classList.remove('hidden');
         
-        const accesos = USERS_DB[sessionUser].roles;
+        // Aplicamos los roles: secDashboard, secGarita, etc.
+        const accesos = user.roles || [];
         document.querySelectorAll('.tab-btn').forEach(b => { 
             if(!accesos.includes(b.dataset.sec)) b.classList.add('hidden-auth'); 
         });
         
-        // Mostrar la primera sección permitida
-        mostrarSeccion(accesos[0], document.querySelector(`[data-sec="${accesos[0]}"]`));
+        // Mostrar la primera pestaña permitida
+        if (accesos.length > 0) {
+            mostrarSeccion(accesos[0], document.querySelector(`[data-sec="${accesos[0]}"]`));
+        }
         
-        if(USERS_DB[sessionUser].roles.includes("secDashboard")) moduloDashboard.init();
+        // Inicializar Dashboard si el usuario tiene permiso
+        if(accesos.includes("secDashboard")) moduloDashboard.init();
     }
 };
+
         // ==========================================
         // MÓDULO 2: INTERFAZ Y MODALES
         // ==========================================
