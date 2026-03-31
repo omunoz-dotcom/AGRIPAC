@@ -3,113 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bitácora de Carga - Planta</title>
+    <title>AGRIPAC - Sistema de Control de Patio</title>
     <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 p-5">
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    <h1 class="text-3xl font-bold text-center mb-8 text-blue-800">Control de Ingreso y Carga</h1>
+        // --- PEGA TUS CREDENCIALES AQUÍ ---
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "agripac-control.firebaseapp.com",
+            databaseURL: "https://agripac-control-default-rtdb.firebaseio.com",
+            projectId: "agripac-control",
+            storageBucket: "agripac-control.appspot.com",
+            messagingSenderId: "1033116506620",
+            appId: "TU_APP_ID"
+        };
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-xl font-semibold mb-4 border-b pb-2">🚧 Registro de Garita</h2>
-            <div class="space-y-4">
-                <input id="codigoUnico" type="text" placeholder="Código Único" class="w-full p-2 border rounded">
-                <input id="placa" type="text" placeholder="Placa del Vehículo" class="w-full p-2 border rounded">
-                <button onclick="registrarIngreso()" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Validar e Ingresar</button>
-            </div>
-        </div>
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const vehiculosRef = ref(db, 'vehiculos');
 
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-xl font-semibold mb-4 border-b pb-2">🚚 Vehículos en Proceso</h2>
-            <div id="listaVehiculos" class="space-y-4">
-                </div>
-        </div>
-
-    </div>
-
-    <script>
-        // Array temporal (En producción usarías Firebase para que sea "en vivo")
-        let vehiculos = [];
-
-        function registrarIngreso() {
+        // 1. REGISTRO EN GARITA
+        window.registrarIngreso = function() {
             const codigo = document.getElementById('codigoUnico').value;
             const placa = document.getElementById('placa').value;
+            if(!codigo || !placa) return alert("Por favor, ingrese Código y Placa");
 
-            if(!codigo || !placa) return alert("Llena los datos");
-
-            const nuevoVehiculo = {
-                id: Date.now(),
+            push(vehiculosRef, {
                 codigo,
                 placa,
                 estado: 'Ingreso a Planta',
-                inicioCarga: null,
-                tiempoTranscurrido: '00:00',
-                anden: 'Pendiente'
-            };
-
-            vehiculos.push(nuevoVehiculo);
-            renderizar();
-        }
-
-        function iniciarCarga(id) {
-            const v = vehiculos.find(x => x.id === id);
-            v.estado = 'En Carga';
-            v.inicioCarga = new Date();
-            v.anden = prompt("Asigne un Andén:");
-            renderizar();
-        }
-
-        function finalizarCarga(id) {
-            const v = vehiculos.find(x => x.id === id);
-            v.estado = 'Carga Finalizada';
-            v.finCarga = new Date();
-            renderizar();
-        }
-
-        // Lógica del Cronómetro
-        setInterval(() => {
-            vehiculos.forEach(v => {
-                if (v.estado === 'En Carga' && v.inicioCarga) {
-                    const ahora = new Date();
-                    const diff = ahora - v.inicioCarga;
-                    const min = Math.floor(diff / 60000);
-                    const seg = Math.floor((diff % 60000) / 1000);
-                    v.tiempoTranscurrido = `${min}m ${seg}s`;
-                }
+                fechaIngreso: new Date().toLocaleString(),
+                anden: 'Sin asignar',
+                pesoInicial: 0,
+                pesoFinal: 0,
+                precintos: '',
+                timestamp: Date.now()
             });
-            renderizar();
-        }, 1000);
+            document.getElementById('codigoUnico').value = '';
+            document.getElementById('placa').value = '';
+        };
 
-        function renderizar() {
+        // 2. LÓGICA DE CAMBIO DE ESTADOS
+        window.cambiarEstado = function(id, nuevoEstado) {
+            const actualizaciones = { estado: nuevoEstado };
+            
+            if(nuevoEstado === 'En Carga') {
+                const anden = prompt("Asigne un número de Andén:");
+                if(!anden) return;
+                actualizaciones.anden = anden;
+                actualizaciones.inicioCarga = Date.now();
+            }
+            
+            if(nuevoEstado === 'Pesaje Final') {
+                const precintos = prompt("Ingrese los números de precintos:");
+                if(!precintos) return;
+                actualizaciones.precintos = precintos;
+            }
+
+            update(ref(db, `vehiculos/${id}`), actualizaciones);
+        };
+
+        // 3. REGISTRO DE PESOS (BÁSCULA)
+        window.registrarPeso = function(id, tipo) {
+            const peso = prompt(`Ingrese el peso ${tipo} (kg):`);
+            if(!peso) return;
+            const campo = tipo === 'inicial' ? 'pesoInicial' : 'pesoFinal';
+            update(ref(db, `vehiculos/${id}`), { [campo]: peso });
+        };
+
+        // 4. ELIMINAR/SALIDA
+        window.darSalida = function(id) {
+            if(confirm("¿Confirmar salida del vehículo y cerrar registro?")) {
+                remove(ref(db, `vehiculos/${id}`));
+            }
+        };
+
+        // ESCUCHAR DATOS EN TIEMPO REAL
+        onValue(vehiculosRef, (snapshot) => {
+            const data = snapshot.val();
             const contenedor = document.getElementById('listaVehiculos');
             contenedor.innerHTML = '';
+            
+            if(!data) {
+                contenedor.innerHTML = '<p class="text-center text-gray-400">No hay vehículos en planta</p>';
+                return;
+            }
 
-            vehiculos.forEach(v => {
-                const card = document.createElement('div');
-                card.className = "p-4 border rounded-lg bg-gray-50 flex justify-between items-center";
+            Object.keys(data).forEach(id => {
+                const v = data[id];
+                let cronometro = "";
                 
-                let colorEstado = v.estado === 'En Carga' ? 'text-blue-600' : 'text-orange-600';
-                if(v.estado === 'Carga Finalizada') colorEstado = 'text-green-600';
+                if(v.estado === 'En Carga' && v.inicioCarga) {
+                    const min = Math.floor((Date.now() - v.inicioCarga) / 60000);
+                    cronometro = `<span class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-bold animate-pulse">${min} MIN EN CARGA</span>`;
+                }
 
-                card.innerHTML = `
-                    <div>
-                        <p class="font-bold text-lg">${v.placa} <span class="text-sm font-normal text-gray-500">(${v.codigo})</span></p>
-                        <p class="text-sm">Andén: <b>${v.anden}</b></p>
-                        <p class="font-semibold ${colorEstado}">${v.estado}</p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-2xl font-mono">${v.estado === 'En Carga' ? v.tiempoTranscurrido : '--:--'}</p>
-                        ${v.estado === 'Ingreso a Planta' ? 
-                            `<button onclick="iniciarCarga(${v.id})" class="text-xs bg-blue-500 text-white px-2 py-1 rounded">Iniciar Carga</button>` : ''}
-                        ${v.estado === 'En Carga' ? 
-                            `<button onclick="finalizarCarga(${v.id})" class="text-xs bg-red-500 text-white px-2 py-1 rounded">Cerrar Carga</button>` : ''}
+                const card = `
+                    <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 ${v.estado === 'En Carga' ? 'border-blue-500' : 'border-gray-300'} mb-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-lg font-bold text-blue-900">${v.placa} <span class="text-sm font-normal text-gray-500">#${v.codigo}</span></h3>
+                                <p class="text-xs text-gray-500">Ingreso: ${v.fechaIngreso}</p>
+                                <div class="mt-2 space-y-1">
+                                    <p class="text-sm">📍 <b>Estado:</b> <span class="text-orange-600 font-bold">${v.estado}</span></p>
+                                    <p class="text-sm">🚚 <b>Andén:</b> ${v.anden}</p>
+                                    <p class="text-sm">⚖️ <b>Pesos:</b> In: ${v.pesoInicial}kg | Out: ${v.pesoFinal}kg</p>
+                                    ${v.precintos ? `<p class="text-sm">🔒 <b>Precintos:</b> ${v.precintos}</p>` : ''}
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-2">
+                                ${cronometro}
+                                ${v.estado === 'Ingreso a Planta' ? `<button onclick="registrarPeso('${id}', 'inicial')" class="bg-gray-800 text-white text-xs px-3 py-2 rounded">Báscula Entrada</button>` : ''}
+                                ${v.estado === 'Ingreso a Planta' ? `<button onclick="cambiarEstado('${id}', 'En Carga')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded">Asignar Andén</button>` : ''}
+                                ${v.estado === 'En Carga' ? `<button onclick="cambiarEstado('${id}', 'Pesaje Final')" class="bg-green-600 text-white text-xs px-3 py-2 rounded">Cerrar Carga</button>` : ''}
+                                ${v.estado === 'Pesaje Final' ? `<button onclick="registrarPeso('${id}', 'final')" class="bg-gray-800 text-white text-xs px-3 py-2 rounded">Báscula Salida</button>` : ''}
+                                <button onclick="darSalida('${id}')" class="border border-red-200 text-red-500 text-xs px-3 py-1 rounded mt-2">Dar Salida</button>
+                            </div>
+                        </div>
                     </div>
                 `;
-                contenedor.appendChild(card);
+                contenedor.innerHTML += card;
             });
-        }
+        });
+
+        // Actualizar vista cada minuto para el cronómetro
+        setInterval(() => { }, 60000);
     </script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+    <nav class="bg-blue-900 text-white p-4 shadow-lg mb-6">
+        <div class="max-w-5xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold tracking-tight">AGRIPAC | Logística de Planta</h1>
+            <span class="text-xs bg-blue-800 px-2 py-1 rounded">Control en Vivo</span>
+        </div>
+    </nav>
+
+    <main class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 p-4">
+        <div class="md:col-span-1">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h2 class="text-sm font-bold text-gray-400 uppercase mb-4">Registro de Garita</h2>
+                <input id="codigoUnico" type="text" placeholder="Código Único" class="w-full mb-3 p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                <input id="placa" type="text" placeholder="Placa Vehículo" class="w-full mb-4 p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                <button onclick="registrarIngreso()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-blue-200 shadow-lg hover:bg-blue-700 transition-all">
+                    DAR OK INGRESO
+                </button>
+            </div>
+        </div>
+
+        <div class="md:col-span-2">
+            <h2 class="text-sm font-bold text-gray-400 uppercase mb-4">Monitor de Operaciones</h2>
+            <div id="listaVehiculos">
+                </div>
+        </div>
+    </main>
 </body>
 </html>
