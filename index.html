@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGRIPAC - Sistema de Control de Patio</title>
+    <title>AGRIPAC - Validación de Planificación</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
-    
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+        // Configuración de Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyANUkQLUGrMh4ET1LdyYCucuZqqVKR39u4",
             authDomain: "agripac-control.firebaseapp.com",
@@ -18,28 +18,93 @@
             projectId: "agripac-control",
             storageBucket: "agripac-control.firebasestorage.app",
             messagingSenderId: "1033116506620",
-            appId: "1:1033116506620:web:d4472bec9f6178b48bba79",
-            measurementId: "G-J4MGT2J80C"
+            appId: "1:1033116506620:web:d4472bec9f6178b48bba79"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         const vehiculosRef = ref(db, 'vehiculos');
 
-        // --- LÓGICA DEL ESCÁNER QR ---
+        // URL del CSV de tu Google Sheet
+        const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
+
         let html5QrCode;
 
+        // --- FUNCIÓN DE VALIDACIÓN CONTRA GOOGLE SHEETS ---
+        async function validarEnPlanificacion(idEscaneado) {
+            try {
+                const response = await fetch(URL_SHEET_CSV);
+                const data = await response.text();
+                const filas = data.split("\n").map(row => row.split(","));
+                
+                // Buscar por ID (Columna A index 0)
+                const encontrado = filas.find(f => f[0].trim().toUpperCase() === idEscaneado.trim().toUpperCase());
+
+                if (encontrado) {
+                    // Mapeo según tu captura: A:ID, C:PLACA(2), D:CHOFER(3), H:OPERADOR(7), I:AREA(8)
+                    const datos = {
+                        id: encontrado[0],
+                        placa: encontrado[2],
+                        chofer: encontrado[3],
+                        operador: encontrado[7],
+                        area: encontrado[8]
+                    };
+                    mostrarResultado(true, datos);
+                } else {
+                    mostrarResultado(false, null, idEscaneado);
+                }
+            } catch (error) {
+                console.error("Error al leer planificación:", error);
+                alert("Error de conexión con la planificación de Google Sheets");
+            }
+        }
+
+        function mostrarResultado(autorizado, datos, idEscaneado) {
+            const resDiv = document.getElementById('resultadoValidacion');
+            resDiv.classList.remove('hidden');
+            
+            if(autorizado) {
+                resDiv.innerHTML = `
+                    <div class="bg-green-50 border-2 border-green-500 p-4 rounded-2xl animate-bounce">
+                        <p class="text-green-700 font-black text-center text-lg">✅ AUTORIZADO</p>
+                        <div class="text-[11px] mt-2 text-gray-700 space-y-1">
+                            <p><b>PLACA:</b> ${datos.placa}</p>
+                            <p><b>CHOFER:</b> ${datos.chofer}</p>
+                            <p><b>AREA:</b> ${datos.area}</p>
+                            <p><b>LOGISTICA:</b> ${datos.operador}</p>
+                        </div>
+                        <button onclick="confirmarIngreso('${datos.id}', '${datos.placa}', '${datos.area}')" class="w-full mt-4 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg">REGISTRAR INGRESO</button>
+                    </div>`;
+            } else {
+                resDiv.innerHTML = `
+                    <div class="bg-red-50 border-2 border-red-500 p-4 rounded-2xl text-center">
+                        <p class="text-red-700 font-black text-lg">❌ NO AUTORIZADO</p>
+                        <p class="text-xs text-red-600 mt-1 font-medium italic">El ID "${idEscaneado}" no está en la planificación de hoy.</p>
+                        <button onclick="document.getElementById('resultadoValidacion').classList.add('hidden')" class="mt-3 text-xs font-bold text-gray-400 uppercase">Cerrar</button>
+                    </div>`;
+            }
+        }
+
+        window.confirmarIngreso = function(id, placa, area) {
+            push(vehiculosRef, {
+                codigo: id,
+                placa: placa,
+                area: area,
+                estado: 'Ingreso a Planta',
+                fechaIngreso: new Date().toLocaleString(),
+                timestamp: Date.now()
+            });
+            document.getElementById('resultadoValidacion').classList.add('hidden');
+            alert("Vehículo " + placa + " registrado exitosamente.");
+        };
+
+        // --- LÓGICA DEL ESCÁNER ---
         window.encenderEscaner = function() {
             document.getElementById('reader-container').classList.remove('hidden');
             html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-            html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-                document.getElementById('codigoUnico').value = decodedText;
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
                 apagarEscaner();
-                alert("Código QR detectado: " + decodedText);
-            }).catch((err) => {
-                console.error("Error al iniciar cámara", err);
+                validarEnPlanificacion(text);
             });
         };
 
@@ -51,129 +116,53 @@
             }
         };
 
-        // --- FUNCIONES DE CONTROL ---
-        window.registrarIngreso = function() {
-            const codigo = document.getElementById('codigoUnico').value;
-            const placa = document.getElementById('placa').value;
-            if(!codigo || !placa) return alert("Por favor, ingrese Código y Placa");
-
-            push(vehiculosRef, {
-                codigo,
-                placa,
-                estado: 'Ingreso a Planta',
-                fechaIngreso: new Date().toLocaleString(),
-                anden: 'Sin asignar',
-                pesoInicial: 0,
-                pesoFinal: 0,
-                precintos: '',
-                timestamp: Date.now()
-            });
-            document.getElementById('codigoUnico').value = '';
-            document.getElementById('placa').value = '';
-        };
-
-        window.cambiarEstado = function(id, nuevoEstado) {
-            const actualizaciones = { estado: nuevoEstado };
-            if(nuevoEstado === 'En Carga') {
-                const anden = prompt("Asigne un número de Andén:");
-                if(!anden) return;
-                actualizaciones.anden = anden;
-                actualizaciones.inicioCarga = Date.now();
-            }
-            if(nuevoEstado === 'Pesaje Final') {
-                const precintos = prompt("Ingrese los números de precintos:");
-                if(!precintos) return;
-                actualizaciones.precintos = precintos;
-            }
-            update(ref(db, `vehiculos/${id}`), actualizaciones);
-        };
-
-        window.registrarPeso = function(id, tipo) {
-            const peso = prompt(`Ingrese el peso ${tipo} (kg):`);
-            if(!peso) return;
-            update(ref(db, `vehiculos/${id}`), { [tipo === 'inicial' ? 'pesoInicial' : 'pesoFinal']: peso });
-        };
-
-        window.darSalida = function(id) {
-            if(confirm("¿Confirmar salida y cerrar proceso?")) remove(ref(db, `vehiculos/${id}`));
-        };
-
+        // MONITOR EN VIVO
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
             const contenedor = document.getElementById('listaVehiculos');
             contenedor.innerHTML = '';
-            if(!data) {
-                contenedor.innerHTML = '<p class="text-center text-gray-400 mt-10 font-bold italic">Esperando ingresos...</p>';
-                return;
-            }
-
-            Object.keys(data).forEach(id => {
-                const v = data[id];
-                let crono = "";
-                if(v.estado === 'En Carga' && v.inicioCarga) {
-                    const min = Math.floor((Date.now() - v.inicioCarga) / 60000);
-                    crono = `<span class="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold animate-pulse">${min} MIN EN CARGA</span>`;
-                }
-
+            if(!data) return;
+            Object.keys(data).forEach(key => {
+                const v = data[key];
                 contenedor.innerHTML += `
-                    <div class="bg-white p-5 rounded-2xl shadow-sm border-l-8 ${v.estado === 'En Carga' ? 'border-blue-600' : 'border-gray-200'} mb-4">
-                        <div class="flex flex-col md:flex-row justify-between gap-4">
-                            <div>
-                                <h3 class="text-xl font-black text-blue-900">${v.placa} <span class="text-sm font-normal text-gray-400 italic">#${v.codigo}</span></h3>
-                                <div class="mt-2 space-y-1 text-sm font-medium">
-                                    <p>📍 <b>Estado:</b> <span class="text-orange-600 font-bold">${v.estado}</span></p>
-                                    <p>🚚 <b>Andén:</b> ${v.anden}</p>
-                                    <p>⚖️ <b>Peso:</b> ${v.pesoInicial}kg / ${v.pesoFinal}kg</p>
-                                    ${v.precintos ? `<p>🔒 <b>Precintos:</b> ${v.precintos}</p>` : ''}
-                                </div>
-                            </div>
-                            <div class="flex flex-wrap gap-2 items-center">
-                                ${crono}
-                                ${v.estado === 'Ingreso a Planta' ? `<button onclick="registrarPeso('${id}', 'inicial')" class="bg-slate-700 text-white text-[10px] px-3 py-2 rounded-lg font-bold">BÁSCULA IN</button>` : ''}
-                                ${v.estado === 'Ingreso a Planta' ? `<button onclick="cambiarEstado('${id}', 'En Carga')" class="bg-blue-600 text-white text-[10px] px-3 py-2 rounded-lg font-bold">INICIAR CARGA</button>` : ''}
-                                ${v.estado === 'En Carga' ? `<button onclick="cambiarEstado('${id}', 'Pesaje Final')" class="bg-green-600 text-white text-[10px] px-3 py-2 rounded-lg font-bold">FIN CARGA</button>` : ''}
-                                ${v.estado === 'Pesaje Final' ? `<button onclick="registrarPeso('${id}', 'final')" class="bg-slate-700 text-white text-[10px] px-3 py-2 rounded-lg font-bold">BÁSCULA OUT</button>` : ''}
-                                <button onclick="darSalida('${id}')" class="text-red-500 text-[10px] px-3 py-2 rounded-lg border border-red-100 hover:bg-red-50 font-bold uppercase">Salida</button>
-                            </div>
-                        </div>
-                    </div>`;
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600 mb-3 flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-blue-900 leading-none">${v.placa}</p>
+                        <p class="text-[10px] text-gray-400 mt-1 uppercase font-bold">${v.area}</p>
+                    </div>
+                    <button onclick="darSalida('${key}')" class="text-[10px] font-bold text-red-400 border border-red-500/20 px-2 py-1 rounded-md hover:bg-red-500 hover:text-white transition-all">SALIDA</button>
+                </div>`;
             });
         });
+
+        window.darSalida = (key) => { if(confirm("¿Dar salida?")) remove(ref(db, `vehiculos/${key}`)); };
     </script>
 </head>
-<body class="bg-slate-100 min-h-screen">
-    <nav class="bg-blue-900 text-white p-4 shadow-lg mb-6">
-        <div class="max-w-6xl mx-auto flex justify-between items-center font-black uppercase italic tracking-tighter">
-            <span>AGRIPAC Patio</span>
-            <span class="text-[10px] bg-green-500 px-2 py-1 rounded-full animate-pulse">Online</span>
-        </div>
+<body class="bg-slate-50 min-h-screen">
+    <nav class="bg-blue-900 text-white p-4 shadow-lg flex justify-between items-center">
+        <h1 class="font-black italic tracking-tighter text-xl">AGRIPAC PATIO</h1>
+        <div class="text-[10px] font-bold bg-blue-800 px-2 py-1 rounded">SISTEMA DE PLANIFICACIÓN</div>
     </nav>
 
-    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 px-4">
-        <div class="lg:col-span-1">
-            <div class="bg-white p-6 rounded-3xl shadow-xl">
-                <h2 class="text-xs font-black text-gray-400 uppercase mb-4 tracking-widest text-center">Registro de Garita</h2>
-                
-                <button onclick="encenderEscaner()" class="w-full mb-4 bg-slate-800 text-white py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition-all">
-                    <span class="text-xl">📷</span> <b>ESCANEAR CÓDIGO QR</b>
+    <main class="max-w-4xl mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="md:col-span-1">
+            <div class="bg-white p-6 rounded-3xl shadow-xl border border-blue-50">
+                <button onclick="encenderEscaner()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:scale-105 transition-transform shadow-lg shadow-blue-200">
+                    📷 ESCANEAR QR
                 </button>
-
-                <div id="reader-container" class="hidden fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4">
-                    <div id="reader" class="w-full max-w-sm bg-white rounded-2xl overflow-hidden"></div>
-                    <button onclick="apagarEscaner()" class="mt-6 bg-red-600 text-white px-8 py-3 rounded-full font-bold">CANCELAR</button>
-                </div>
-
-                <div class="space-y-3">
-                    <input id="codigoUnico" type="text" placeholder="Código Único" class="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold">
-                    <input id="placa" type="text" placeholder="Placa Vehículo" class="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold uppercase">
-                    <button onclick="registrarIngreso()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all">VALIDAR INGRESO</button>
-                </div>
+                <div id="resultadoValidacion" class="hidden mt-6"></div>
             </div>
         </div>
 
-        <div class="lg:col-span-3">
+        <div class="md:col-span-2">
+            <h2 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Vehículos en Planta</h2>
             <div id="listaVehiculos"></div>
         </div>
     </main>
+
+    <div id="reader-container" class="hidden fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4">
+        <div id="reader" class="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl"></div>
+        <button onclick="apagarEscaner()" class="mt-8 bg-red-600 text-white px-10 py-4 rounded-full font-black tracking-widest text-sm shadow-xl">CANCELAR</button>
+    </div>
 </body>
 </html>
