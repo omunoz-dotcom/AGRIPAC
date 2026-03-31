@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGRIPAC - Validación de Planificación</title>
+    <title>AGRIPAC - Sistema de Control</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+        // CONFIGURACIÓN OFICIAL
         const firebaseConfig = {
             apiKey: "AIzaSyANUkQLUGrMh4ET1LdyYCucuZqqVKR39u4",
             authDomain: "agripac-control.firebaseapp.com",
@@ -28,83 +29,88 @@
 
         let html5QrCode;
 
-        // --- FUNCIÓN DE VALIDACIÓN (QR O MANUAL) ---
+        // VALIDACIÓN
         window.validarEntrada = async function(idEscaneado = null) {
-            // Si no viene del QR, lo toma del input manual
             const idABuscar = idEscaneado || document.getElementById('inputManual').value;
-            
-            if (!idABuscar) return alert("Por favor ingrese o escanee un código");
+            if (!idABuscar) return alert("Ingrese un código");
+
+            const resDiv = document.getElementById('resultadoValidacion');
+            resDiv.innerHTML = "<p class='text-center p-4 font-bold text-blue-500 animate-pulse'>Consultando Planificación...</p>";
+            resDiv.classList.remove('hidden');
 
             try {
                 const response = await fetch(URL_SHEET_CSV);
                 const data = await response.text();
                 const filas = data.split("\n").map(row => row.split(","));
                 
+                // Limpiamos espacios y pasamos a Mayúsculas para evitar errores de tipeo
                 const encontrado = filas.find(f => f[0].trim().toUpperCase() === idABuscar.trim().toUpperCase());
 
                 if (encontrado) {
                     const datos = {
-                        id: encontrado[0],
-                        placa: encontrado[2],
-                        chofer: encontrado[3],
-                        operador: encontrado[7],
-                        area: encontrado[8]
+                        id: encontrado[0].trim(),
+                        placa: encontrado[2].trim(),
+                        chofer: encontrado[3].trim(),
+                        area: encontrado[8].trim()
                     };
-                    mostrarResultado(true, datos);
+                    
+                    resDiv.innerHTML = `
+                        <div class="bg-green-50 border-2 border-green-500 p-5 rounded-2xl shadow-xl">
+                            <p class="text-green-700 font-black text-center text-xl mb-3">✅ AUTORIZADO</p>
+                            <div class="space-y-1 bg-white p-3 rounded-xl border border-green-100 text-sm">
+                                <p><b>PLACA:</b> ${datos.placa}</p>
+                                <p><b>CHOFER:</b> ${datos.chofer}</p>
+                                <p><b>AREA:</b> ${datos.area}</p>
+                            </div>
+                            <button id="btnFinal" class="w-full mt-4 bg-green-600 text-white py-4 rounded-xl font-black shadow-lg active:scale-95 transition-all">
+                                CONFIRMAR INGRESO 🚛
+                            </button>
+                        </div>`;
+                    
+                    // Asignamos el evento click manualmente para asegurar que funcione
+                    document.getElementById('btnFinal').onclick = () => {
+                        confirmarIngreso(datos.id, datos.placa, datos.area);
+                    };
+
                 } else {
-                    mostrarResultado(false, null, idABuscar);
+                    resDiv.innerHTML = `
+                        <div class="bg-red-50 border-2 border-red-500 p-5 rounded-2xl text-center shadow-lg">
+                            <p class="text-red-700 font-black text-xl">❌ NO AUTORIZADO</p>
+                            <p class="text-sm text-red-600 mt-2 italic font-medium">ID "${idABuscar}" no encontrado.</p>
+                            <button onclick="document.getElementById('resultadoValidacion').classList.add('hidden')" class="mt-4 text-xs font-bold text-gray-400">CERRAR</button>
+                        </div>`;
                 }
-            } catch (error) {
-                alert("Error de conexión con Google Sheets");
+            } catch (e) {
+                alert("Error de conexión con Sheets. Verifique internet.");
             }
         };
 
-        function mostrarResultado(autorizado, datos, idEscaneado) {
-            const resDiv = document.getElementById('resultadoValidacion');
-            resDiv.classList.remove('hidden');
-            
-            if(autorizado) {
-                resDiv.innerHTML = `
-                    <div class="bg-green-50 border-2 border-green-600 p-5 rounded-2xl shadow-lg shadow-green-200/50">
-                        <p class="text-green-700 font-black text-center text-xl mb-3">✅ AUTORIZADO</p>
-                        <div class="space-y-2 bg-white/80 p-4 rounded-xl border border-green-200">
-                            <p class="text-xs text-gray-500"><b>ID:</b> ${datos.id}</p>
-                            <p class="text-sm uppercase"><b>PLACA:</b> <span class="font-black text-blue-900">${datos.placa}</span></p>
-                            <p class="text-sm"><b>CHOFER:</b> ${datos.chofer}</p>
-                            <p class="text-sm font-bold text-gray-700">📍 AREA: ${datos.area}</p>
-                        </div>
-                        <button onclick="confirmarIngreso('${datos.id}', '${datos.placa}', '${datos.area}')" 
-                                class="w-full mt-4 bg-green-600 text-white py-4 rounded-2xl font-black text-lg shadow-md hover:bg-green-700 active:scale-95 transition-all">
-                            CONFIRMAR INGRESO 🚛
-                        </button>
-                    </div>`;
-            } else {
-                resDiv.innerHTML = `
-                    <div class="bg-red-50 border-2 border-red-500 p-5 rounded-2xl text-center shadow-lg shadow-red-200/50">
-                        <p class="text-red-700 font-black text-xl">❌ NO AUTORIZADO</p>
-                        <p class="text-sm text-red-600 mt-2 font-medium italic underline">ID "${idEscaneado}" no planificado.</p>
-                        <button onclick="document.getElementById('resultadoValidacion').classList.add('hidden')" 
-                                class="mt-4 bg-red-600 text-white px-6 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest">Cerrar</button>
-                    </div>`;
+        // GUARDAR EN FIREBASE
+        function confirmarIngreso(id, placa, area) {
+            try {
+                push(vehiculosRef, {
+                    codigo: id,
+                    placa: placa,
+                    area: area,
+                    estado: 'Ingreso a Planta',
+                    fechaIngreso: new Date().toLocaleString(),
+                    timestamp: Date.now()
+                }).then(() => {
+                    document.getElementById('resultadoValidacion').classList.add('hidden');
+                    document.getElementById('inputManual').value = '';
+                    alert("¡Registro Exitoso! El vehículo " + placa + " ya está en monitor.");
+                });
+            } catch (error) {
+                alert("Error al guardar en la base de datos.");
             }
-            resDiv.scrollIntoView({ behavior: 'smooth' });
         }
 
-        window.confirmarIngreso = function(id, placa, area) {
-            push(vehiculosRef, {
-                codigo: id,
-                placa: placa,
-                area: area,
-                estado: 'Ingreso a Planta',
-                fechaIngreso: new Date().toLocaleString(),
-                timestamp: Date.now()
-            });
-            document.getElementById('resultadoValidacion').classList.add('hidden');
-            document.getElementById('inputManual').value = '';
-            alert("Vehículo " + placa + " registrado.");
+        // SALIDA
+        window.darSalida = (key) => {
+            if(confirm("¿Confirmar salida?")) remove(ref(db, `vehiculos/${key}`));
         };
 
-        // --- LÓGICA DEL ESCÁNER ---
+        // ESCÁNER
         window.encenderEscaner = function() {
             document.getElementById('reader-container').classList.remove('hidden');
             html5QrCode = new Html5Qrcode("reader");
@@ -116,9 +122,7 @@
 
         window.apagarEscaner = function() {
             if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    document.getElementById('reader-container').classList.add('hidden');
-                });
+                html5QrCode.stop().then(() => { document.getElementById('reader-container').classList.add('hidden'); });
             }
         };
 
@@ -131,73 +135,40 @@
             Object.keys(data).forEach(key => {
                 const v = data[key];
                 contenedor.innerHTML += `
-                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600 mb-3 flex justify-between items-center transition-all">
+                <div class="bg-white p-4 rounded-xl shadow-md border-l-8 border-blue-700 mb-3 flex justify-between items-center animate-fadeIn">
                     <div>
-                        <p class="font-black text-blue-900 leading-none text-lg">${v.placa}</p>
-                        <p class="text-[10px] text-gray-400 mt-1 font-bold uppercase tracking-wider">${v.area}</p>
+                        <p class="font-black text-blue-900 text-lg leading-tight uppercase">${v.placa}</p>
+                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-tighter italic">${v.area}</p>
                     </div>
-                    <button onclick="darSalida('${key}')" class="text-[10px] font-bold text-red-400 border border-red-500/10 px-3 py-2 rounded-lg hover:bg-red-500 hover:text-white transition-all uppercase">Salida</button>
+                    <button onclick="darSalida('${key}')" class="bg-red-50 text-red-600 text-[10px] font-black px-3 py-2 rounded-lg border border-red-200">SALIDA</button>
                 </div>`;
             });
         });
-
-        window.darSalida = (key) => { if(confirm("¿Confirmar salida?")) remove(ref(db, `vehiculos/${key}`)); };
     </script>
 </head>
-<body class="bg-slate-50 min-h-screen">
-    <nav class="bg-blue-900 text-white p-5 shadow-xl flex justify-between items-center">
-        <div class="flex items-center gap-3">
-            <div class="bg-white p-1 rounded-lg text-blue-900 font-black text-sm">AG</div>
-            <h1 class="font-black italic tracking-tighter text-xl uppercase">Patio Agripac</h1>
-        </div>
-        <div class="flex items-center gap-2">
-            <div class="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
-            <span class="text-[9px] font-bold uppercase tracking-widest opacity-70">En Línea</span>
-        </div>
-    </nav>
-
-    <main class="max-w-5xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div class="lg:col-span-1">
-            <div class="bg-white p-6 rounded-3xl shadow-xl border border-blue-100">
-                <h2 class="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 text-center italic">Control de Acceso</h2>
-                
-                <button onclick="encenderEscaner()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-lg active:scale-95">
+<body class="bg-slate-100 font-sans">
+    <nav class="bg-blue-900 text-white p-5 text-center font-black italic shadow-xl text-xl uppercase tracking-tighter">AGRIPAC PATIO</nav>
+    <main class="max-w-4xl mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-8 mt-4">
+        <div class="md:col-span-1 space-y-6">
+            <div class="bg-white p-6 rounded-3xl shadow-2xl border border-blue-50">
+                <button onclick="encenderEscaner()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all mb-6">
                     <span class="text-xl">📷</span> ESCANEAR QR
                 </button>
-
-                <div class="relative my-8 text-center">
-                    <hr class="border-gray-100">
-                    <span class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-4 text-[10px] font-bold text-gray-300 uppercase">O MANUAL</span>
-                </div>
-
                 <div class="space-y-3">
-                    <input id="inputManual" type="text" placeholder="Ingresa ID (Ej: C1R-28)" class="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none font-black text-center text-blue-900 uppercase">
-                    <button onclick="validarEntrada()" class="w-full bg-blue-100 text-blue-700 py-4 rounded-2xl font-black hover:bg-blue-200 transition-all active:scale-95 uppercase tracking-widest text-xs">
-                        Validar ID
-                    </button>
+                    <input id="inputManual" type="text" placeholder="INGRESO MANUAL" class="w-full p-4 bg-slate-50 border-2 border-blue-100 rounded-2xl outline-none font-black text-center text-blue-900 uppercase focus:border-blue-500">
+                    <button onclick="validarEntrada()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-md hover:bg-blue-700 active:scale-95 transition-all text-xs tracking-widest">VALIDAR ID</button>
                 </div>
-
-                <div id="resultadoValidacion" class="hidden mt-8 transition-all"></div>
+                <div id="resultadoValidacion" class="hidden mt-6"></div>
             </div>
         </div>
-
-        <div class="lg:col-span-3">
-            <div class="flex items-center gap-3 mb-6">
-                <h2 class="text-xs font-black text-gray-800 uppercase tracking-[0.2em]">Monitor de Patio</h2>
-                <div class="h-[2px] flex-grow bg-gray-100"></div>
-            </div>
-            <div id="listaVehiculos" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                </div>
+        <div class="md:col-span-2">
+            <h2 class="text-xs font-black text-gray-400 uppercase mb-4 tracking-widest text-center md:text-left">Vehículos en Planta</h2>
+            <div id="listaVehiculos" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
         </div>
     </main>
-
     <div id="reader-container" class="hidden fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-6">
-        <div class="w-full max-w-sm bg-white p-2 rounded-[2rem] overflow-hidden shadow-2xl shadow-blue-500/20">
-            <div id="reader"></div>
-        </div>
-        <button onclick="apagarEscaner()" class="mt-10 bg-white/10 text-white border-2 border-white/20 px-12 py-4 rounded-full font-black tracking-widest text-xs hover:bg-red-600 hover:border-red-600 transition-all">
-            CERRAR CÁMARA
-        </button>
+        <div class="w-full max-w-sm bg-white p-2 rounded-[2rem] overflow-hidden shadow-2xl"><div id="reader"></div></div>
+        <button onclick="apagarEscaner()" class="mt-8 text-white border border-white/30 px-10 py-3 rounded-full font-bold text-xs uppercase tracking-widest bg-red-600">CANCELAR</button>
     </div>
 </body>
 </html>
