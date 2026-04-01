@@ -112,28 +112,19 @@
         };
 
 // ==========================================
-// MÓDULO 3: DASHBOARD (CON GENERADOR DE FICHA QR)
+// MÓDULO 3: DASHBOARD (COLUMNAS ACTUALIZADAS Y WHATSAPP)
 // ==========================================
 const moduloDashboard = {
     init: async function() {
         try {
-            // 1. Obtener fecha de hoy para filtro (DD/MM/YYYY)
             const hoy = new Date();
             const fechaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
-                             String(hoy.getMonth() + 1).padStart(2, '0') + "/" + 
-                             hoy.getFullYear();
+                             String(hoy.getMonth() + 1).padStart(2, '0') + "/" + hoy.getFullYear();
 
-            // 2. Descargar Planificación
             const res = await fetch(URL_SHEET_CSV);
             const csv = await res.text();
-            
-            // 3. Procesar y filtrar: Solo HOY
-            const filasPlan = csv.split("\n")
-                                .map(r => r.split(","))
-                                .slice(1)
-                                .filter(f => f[5] && f[5].trim() === fechaHoy);
+            const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1).filter(f => f[5] && f[5].trim() === fechaHoy);
 
-            // 4. Escuchar cambios en Firebase para KPIs y Estados
             onValue(ref(db), (snapshot) => {
                 const base = snapshot.val() || {};
                 const activos = base.vehiculos || {};
@@ -141,15 +132,12 @@ const moduloDashboard = {
                 const cont = document.getElementById('lDashboard');
                 let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, despachadas: 0 };
 
-                // 5. Generar filas de la tabla
                 const htmlLista = filasPlan.map(f => {
                     const idPlan = f[0].trim().toUpperCase();
                     const vReal = Object.values(activos).find(v => v.codigo.toUpperCase() === idPlan);
-                    const vHist = Object.values(historial).find(v => v.codigo.toUpperCase() === idPlan);
+                    const vHist = Object.values(historial).find(v => v.codigo.toUpperCase() === idPlan && v.estado === "SALIDA DEFINITIVA");
                     
-                    let statusDesc = "PENDIENTE";
-                    let statusColor = "text-slate-400";
-                    let bgStatus = "bg-slate-50";
+                    let statusDesc = "PENDIENTE", statusColor = "text-slate-400", bgStatus = "bg-slate-50";
 
                     if (vReal) {
                         counts.enPlanta++;
@@ -161,23 +149,25 @@ const moduloDashboard = {
                         statusDesc = "DESPACHADO";
                         statusColor = "text-green-700 font-bold";
                         bgStatus = "bg-green-100 border border-green-200";
-                    } else {
-                        counts.pendientes++;
-                    }
+                    } else { counts.pendientes++; }
 
-                    // --- CAMBIO AQUÍ: LA COLUMNA RUTA AHORA ES UN BOTÓN DE DESCARGA ---
                     return `
                         <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                            <td class="p-4 text-[10px] font-bold text-slate-700 uppercase">
-                                <button onclick="window.descargarFichaChofer('${f[0]}', '${f[3]}', '${f[2]}', '${f[1]}')" 
-                                        class="flex items-center gap-2 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg font-black hover:bg-green-100 active:scale-95 transition-all text-[9px] uppercase tracking-wider">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                    Generar Pase QR
-                                </button>
+                            <td class="p-4">
+                                <div class="flex flex-col gap-2">
+                                    <button onclick="window.descargarFichaChofer('${f[0]}', '${f[3]}', '${f[2]}', '${f[1]}')" 
+                                            class="bg-green-600 text-white px-2 py-1.5 rounded-lg font-black hover:bg-green-700 transition-all text-[8px] uppercase shadow-sm">
+                                        Descargar Pase QR
+                                    </button>
+                                    <button onclick="window.enviarPaseWhatsApp('${f[4]}', '${f[3]}', '${f[2]}', '${f[1]}', '${f[0]}')" 
+                                            class="bg-white border border-green-500 text-green-600 px-2 py-1.5 rounded-lg font-black hover:bg-green-50 transition-all text-[8px] uppercase shadow-sm">
+                                        Enviar x WhatsApp
+                                    </button>
+                                </div>
                             </td> 
+                            <td class="p-4 text-[10px] text-blue-800 font-black uppercase italic">${f[1]}</td>
                             <td class="p-4 text-[10px] text-slate-600 font-medium uppercase">${f[3]}</td>
                             <td class="p-4 text-[10px] text-slate-800 font-black uppercase">${f[2]}</td>
-                            <td class="p-4 text-[10px] text-slate-500 uppercase font-semibold">${f[7] || 'N/A'}</td>
                             <td class="p-4 text-right">
                                 <span class="px-3 py-1 rounded-lg text-[8px] font-black uppercase ${bgStatus} ${statusColor}">
                                     ${statusDesc}
@@ -186,109 +176,80 @@ const moduloDashboard = {
                         </tr>`;
                 }).join('');
 
-                // Actualizar KPIs
-                if(document.getElementById('countProg')) document.getElementById('countProg').innerText = counts.programadas;
-                if(document.getElementById('countPend')) document.getElementById('countPend').innerText = counts.pendientes;
-                if(document.getElementById('countPlanta')) document.getElementById('countPlanta').innerText = counts.enPlanta;
-                if(document.getElementById('countCarga')) document.getElementById('countCarga').innerText = counts.despachadas;
+                document.getElementById('countProg').innerText = counts.programadas;
+                document.getElementById('countPend').innerText = counts.pendientes;
+                document.getElementById('countPlanta').innerText = counts.enPlanta;
+                document.getElementById('countCarga').innerText = counts.despachadas;
 
-                // Renderizar Tabla
                 cont.innerHTML = `
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse">
                             <thead>
                                 <tr class="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-500 font-black border-b">
-                                    <th class="p-4">Ruta (Generar QR)</th><th class="p-4">Chofer</th><th class="p-4">Placa</th><th class="p-4">Operador Log.</th><th class="p-4 text-right">Estatus Actual</th>
+                                    <th class="p-4">Acciones QR</th>
+                                    <th class="p-4">Ruta Destino</th>
+                                    <th class="p-4">Chofer</th>
+                                    <th class="p-4">Placa</th>
+                                    <th class="p-4 text-right">Estatus</th>
                                 </tr>
                             </thead>
-                            <tbody>${htmlLista || '<tr><td colspan="5" class="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">No hay despachos programados para hoy</td></tr>'}</tbody>
+                            <tbody>${htmlLista || '<tr><td colspan="5" class="p-10 text-center">Sin datos</td></tr>'}</tbody>
                         </table>
                     </div>`;
             });
-
-            // --- NUEVA FUNCIÓN: GENERA LA IMAGEN DEL PASE ---
-            window.descargarFichaChofer = (codigo, chofer, placa, ruta) => {
-                // 1. Crear contenedor temporal para el QR
-                const tempDiv = document.createElement("div");
-                new QRCode(tempDiv, {
-                    text: codigo, // El ID único que escanea Garita
-                    width: 256,
-                    height: 256,
-                    correctLevel: QRCode.CorrectLevel.H
-                });
-
-                // Esperar a que el QR se dibuje en el canvas
-                setTimeout(() => {
-                    const qrCanvas = tempDiv.querySelector('canvas');
-                    if(!qrCanvas) { alert("Error generando QR"); return; }
-
-                    // 2. Crear el Canvas Final (La Ficha)
-                    const finalCanvas = document.createElement("canvas");
-                    const ctx = finalCanvas.getContext("2d");
-
-                    // Tamaño de la ficha (ancho x alto) - Ideal para celulares
-                    finalCanvas.width = 400;
-                    finalCanvas.height = 550;
-
-                    // Fondo Blanco Total
-                    ctx.fillStyle = "#FFFFFF";
-                    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-
-                    // Cabecera Azul Agripac
-                    ctx.fillStyle = "#003399";
-                    ctx.fillRect(0, 0, 400, 70);
-
-                    // Texto Cabecera
-                    ctx.fillStyle = "#FFFFFF";
-                    ctx.font = "bold 18px Arial";
-                    ctx.textAlign = "center";
-                    ctx.fillText("AGRIPAC - PASE DE INGRESO", 200, 42);
-
-                    // Dibujar el Código QR centrado
-                    ctx.drawImage(qrCanvas, 72, 100, 256, 256);
-
-                    // --- DATOS DEL CONDUCTOR (Abajo del QR) ---
-                    ctx.textAlign = "center";
-                    
-                    // Etiqueta Conductor
-                    ctx.fillStyle = "#64748b"; // Gris slate
-                    ctx.font = "bold 14px Arial";
-                    ctx.fillText("CONDUCTOR:", 200, 390);
-                    
-                    // Nombre Chofer (Grande y Negro)
-                    ctx.fillStyle = "#000000";
-                    ctx.font = "22px Arial";
-                    ctx.fillText(chofer.toUpperCase(), 200, 420);
-
-                    // Etiqueta Placa
-                    ctx.fillStyle = "#64748b";
-                    ctx.font = "bold 14px Arial";
-                    ctx.fillText("PLACA:", 200, 460);
-                    
-                    // Placa (Muy Grande y Azul)
-                    ctx.fillStyle = "#003399";
-                    ctx.font = "bold 32px Arial";
-                    ctx.fillText(placa.toUpperCase(), 200, 495);
-
-                    // Ruta (Pequeña abajo)
-                    ctx.fillStyle = "#94a3b8";
-                    ctx.font = "italic 11px Arial";
-                    ctx.fillText(`Ruta: ${ruta.toUpperCase()}`, 200, 530);
-
-                    // 3. Descargar la imagen automáticamente
-                    const link = document.createElement('a');
-                    // Nombre del archivo limpio (ej: QR_MANUEL_GUAMAN.png)
-                    link.download = `QR_${chofer.replace(/\s+/g, '_').toUpperCase()}.png`;
-                    link.href = finalCanvas.toDataURL("image/png");
-                    link.click();
-
-                    // Limpieza
-                    tempDiv.remove();
-                }, 150); // Pequeño delay para asegurar la generación
-            };
-
         } catch(e) { console.error(e); }
     }
+};
+
+// --- FUNCIÓN: GENERAR IMAGEN PASE QR ---
+window.descargarFichaChofer = (codigo, chofer, placa, ruta) => {
+    const qrContenedor = document.createElement("div");
+    new QRCode(qrContenedor, { text: codigo, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.H });
+
+    setTimeout(() => {
+        const qrCanvas = qrContenedor.querySelector('canvas');
+        if (!qrCanvas) return alert("Error generando QR");
+
+        const finalCanvas = document.createElement("canvas");
+        const ctx = finalCanvas.getContext("2d");
+        finalCanvas.width = 400; finalCanvas.height = 600;
+
+        ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, 400, 600);
+        ctx.fillStyle = "#003399"; ctx.fillRect(0, 0, 400, 80);
+        ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
+        ctx.fillText("AGRIPAC - PASE DE INGRESO", 200, 50);
+
+        ctx.drawImage(qrCanvas, 72, 110, 256, 256);
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#64748b"; ctx.font = "bold 14px Arial"; ctx.fillText("CONDUCTOR", 200, 410);
+        ctx.fillStyle = "#000000"; ctx.font = "bold 22px Arial"; ctx.fillText(chofer.toUpperCase(), 200, 440);
+        ctx.fillStyle = "#64748b"; ctx.font = "bold 14px Arial"; ctx.fillText("PLACA", 200, 480);
+        ctx.fillStyle = "#003399"; ctx.font = "bold 32px Arial"; ctx.fillText(placa.toUpperCase(), 200, 515);
+        ctx.fillStyle = "#000000"; ctx.font = "bold 16px Arial"; ctx.fillText("DESTINO:", 200, 555);
+        ctx.fillStyle = "#1e293b"; ctx.font = "18px Arial"; ctx.fillText(ruta.toUpperCase(), 200, 580);
+
+        const link = document.createElement('a');
+        link.download = `PASE_${placa}_${chofer.split(' ')[0]}.png`;
+        link.href = finalCanvas.toDataURL("image/png");
+        link.click();
+        qrContenedor.remove();
+    }, 250);
+};
+
+// --- FUNCIÓN: ENVIAR TEXTO WHATSAPP ---
+window.enviarPaseWhatsApp = (telefono, chofer, placa, ruta, codigo) => {
+    if (!telefono || telefono === '') return alert("Sin número registrado.");
+    let tel = telefono.replace(/\D/g, ''); 
+    if (tel.startsWith('0')) tel = '593' + tel.substring(1); else if (tel.length === 9) tel = '593' + tel; 
+
+    const mensaje = `*AGRIPAC - PASE DE INGRESO DE UNIDAD*\n\n` +
+                    `Estimado/a *${chofer}*,\n\n` +
+                    `Se ha generado su pase para la unidad *${placa}* con destino a *${ruta}*.\n\n` +
+                    `*ID DE INGRESO:* ${codigo}\n\n` +
+                    `*INSTRUCCIÓN:* A continuación le enviaré la imagen del Código QR. Por favor, muéstrela al guardia en Garita para su ingreso.\n\n` +
+                    `Atentamente,\nLogística Agripac`;
+
+    window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`, '_blank');
 };
         // --- PROCESOS CON REGISTRO DE MOVIMIENTO ---
         window.procUpdate = async (id, data) => {
