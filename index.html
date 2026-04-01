@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGRIPAC - Gestión de Patio v5.4</title>
+    <title>AGRIPAC - Gestión de Patio v5.5</title>
     <link rel="icon" type="image/png" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
@@ -111,169 +111,189 @@
             if(el) el.classList.add('tab-active');
         };
 
-// ==========================================
-// MÓDULO 3: DASHBOARD (COLUMNAS ACTUALIZADAS Y WHATSAPP)
-// ==========================================
-const moduloDashboard = {
-    init: async function() {
-        try {
-            const hoy = new Date();
-            const fechaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
-                             String(hoy.getMonth() + 1).padStart(2, '0') + "/" + hoy.getFullYear();
+        // --- DASHBOARD OPERATIVO ---
+        const moduloDashboard = {
+            init: async function() {
+                try {
+                    const hoy = new Date();
+                    const fechaHoy = String(hoy.getDate()).padStart(2, '0') + "/" + 
+                                     String(hoy.getMonth() + 1).padStart(2, '0') + "/" + hoy.getFullYear();
 
-            const res = await fetch(URL_SHEET_CSV);
-            const csv = await res.text();
-            const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1).filter(f => f[5] && f[5].trim() === fechaHoy);
+                    const res = await fetch(URL_SHEET_CSV);
+                    const csv = await res.text();
+                    const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1).filter(f => f[5] && f[5].trim() === fechaHoy);
 
-            onValue(ref(db), (snapshot) => {
-                const base = snapshot.val() || {};
-                const activos = base.vehiculos || {};
-                const historial = base.historial || {};
-                const cont = document.getElementById('lDashboard');
-                let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, despachadas: 0 };
+                    onValue(ref(db), (snapshot) => {
+                        const base = snapshot.val() || {};
+                        const activos = base.vehiculos || {};
+                        const historial = base.historial || {};
+                        const cont = document.getElementById('lDashboard');
+                        const contSeg = document.getElementById('lSeguridad');
+                        let counts = { programadas: filasPlan.length, pendientes: 0, enPlanta: 0, despachadas: 0 };
 
-                const htmlLista = filasPlan.map(f => {
-                    const idPlan = f[0].trim().toUpperCase();
-                    const vReal = Object.values(activos).find(v => v.codigo.toUpperCase() === idPlan);
-                    const vHist = Object.values(historial).find(v => v.codigo.toUpperCase() === idPlan && v.estado === "SALIDA DEFINITIVA");
-                    
-                    let statusDesc = "PENDIENTE", statusColor = "text-slate-400", bgStatus = "bg-slate-50";
-                    let timerHTML = "";
+                        const htmlLista = filasPlan.map(f => {
+                            const idPlan = f[0].trim().toUpperCase();
+                            const vReal = Object.values(activos).find(v => v.codigo.toUpperCase() === idPlan);
+                            const vHist = Object.values(historial).find(v => v.codigo.toUpperCase() === idPlan && v.estado === "SALIDA DEFINITIVA");
+                            
+                            let statusDesc = "PENDIENTE", statusColor = "text-slate-400", bgStatus = "bg-slate-50", timerHTML = "";
 
-                    if (vReal) {
-                        counts.enPlanta++;
-                        statusDesc = vReal.estado.replace(/_/g,' ');
-                        statusColor = "text-blue-800 font-bold";
-                        bgStatus = "bg-blue-100 border border-blue-200";
-                        
-                        // LÓGICA DEL CRONÓMETRO PARA EL DASHBOARD
-                        if(vReal.estado === 'CARGANDO' && vReal.inicioCarga) {
-                            // Registramos en el objeto global para que el setInterval lo actualice
-                            window.vehiculosCargando[vReal.codigo] = vReal.inicioCarga;
-                            timerHTML = `<br><div id="tDas_${vReal.codigo}" class="text-[9px] font-mono text-orange-600 font-black mt-2 bg-orange-50 inline-block px-2 py-1 rounded shadow-inner animate-pulse">⏱ 00:00:00</div>`;
-                        } else if (vReal.finCarga && vReal.inicioCarga) {
-                            // Tiempo congelado si terminó pero sigue en planta
-                            const diff = Math.floor((vReal.finCarga - vReal.inicioCarga) / 1000);
-                            const h = String(Math.floor(diff / 3600)).padStart(2, '0');
-                            const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-                            const s = String(diff % 60).padStart(2, '0');
-                            timerHTML = `<br><div class="text-[9px] font-mono text-slate-600 font-black mt-2 bg-slate-100 inline-block px-2 py-1 rounded shadow-inner">⏱ ${h}:${m}:${s}</div>`;
-                        }
-                    } else if (vHist) {
-                        counts.despachadas++;
-                        statusDesc = "DESPACHADO";
-                        statusColor = "text-green-700 font-bold";
-                        bgStatus = "bg-green-100 border border-green-200";
-                    } else { counts.pendientes++; }
+                            if (vReal) {
+                                counts.enPlanta++;
+                                statusDesc = vReal.estado.replace(/_/g,' ');
+                                statusColor = "text-blue-800 font-bold";
+                                bgStatus = "bg-blue-100 border border-blue-200";
+                                if(vReal.estado === 'CARGANDO' && vReal.inicioCarga) {
+                                    window.vehiculosCargando[vReal.codigo] = vReal.inicioCarga;
+                                    timerHTML = `<br><div id="tDas_${vReal.codigo}" class="text-[9px] font-mono text-orange-600 font-black mt-2 bg-orange-50 inline-block px-2 py-1 rounded shadow-inner animate-pulse">⏱ 00:00:00</div>`;
+                                } else if (vReal.finCarga && vReal.inicioCarga && (vReal.estado === 'CARGA_REGISTRAR_PRECINTOS' || vReal.estado === 'DIST_DOCS_SALIDA')) {
+                                    const diff = Math.floor((vReal.finCarga - vReal.inicioCarga) / 1000);
+                                    const h = String(Math.floor(diff / 3600)).padStart(2, '0'), m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0'), s = String(diff % 60).padStart(2, '0');
+                                    timerHTML = `<br><div class="text-[9px] font-mono text-slate-600 font-black mt-2 bg-slate-100 inline-block px-2 py-1 rounded shadow-inner">⏱ ${h}:${m}:${s}</div>`;
+                                }
+                            } else if (vHist) {
+                                counts.despachadas++;
+                                statusDesc = "DESPACHADO";
+                                statusColor = "text-green-700 font-bold";
+                                bgStatus = "bg-green-100 border border-green-200";
+                            } else { counts.pendientes++; }
 
-                    return `
-                        <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                            <td class="p-4">
-                                <div class="flex flex-col gap-2">
-                                    <button onclick="window.descargarFichaChofer('${f[0]}', '${f[3]}', '${f[2]}', '${f[1]}')" 
-                                            class="bg-green-600 text-white px-2 py-1.5 rounded-lg font-black hover:bg-green-700 transition-all text-[8px] uppercase shadow-sm">
-                                        Descargar Pase QR
-                                    </button>
-                                    <button onclick="window.enviarPaseWhatsApp('${f[4]}', '${f[3]}', '${f[2]}', '${f[1]}', '${f[0]}')" 
-                                            class="bg-white border border-green-500 text-green-600 px-2 py-1.5 rounded-lg font-black hover:bg-green-50 transition-all text-[8px] uppercase shadow-sm">
-                                        Enviar x WhatsApp
-                                    </button>
-                                </div>
-                            </td> 
-                            <td class="p-4 text-[10px] text-blue-800 font-black uppercase italic">${f[1]}</td>
-                            <td class="p-4 text-[10px] text-slate-600 font-medium uppercase">${f[3]}</td>
-                            <td class="p-4 text-[10px] text-slate-800 font-black uppercase">${f[2]}</td>
-                            <td class="p-4 text-right">
-                                <span class="px-3 py-1 rounded-lg text-[8px] font-black uppercase ${bgStatus} ${statusColor}">
-                                    ${statusDesc}
-                                </span>
-                                ${timerHTML}
-                            </td>
-                        </tr>`;
-                }).join('');
+                            return `
+                                <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                    <td class="p-4">
+                                        <div class="flex flex-col gap-2">
+                                            <button onclick="window.descargarFichaChofer('${f[0]}', '${f[3]}', '${f[2]}', '${f[1]}')" class="bg-green-600 text-white px-2 py-1.5 rounded-lg font-black hover:bg-green-700 text-[8px] uppercase">Descargar QR</button>
+                                            <button onclick="window.enviarPaseWhatsApp('${f[4]}', '${f[3]}', '${f[2]}', '${f[1]}', '${f[0]}')" class="bg-white border border-green-500 text-green-600 px-2 py-1.5 rounded-lg font-black hover:bg-green-50 text-[8px] uppercase">Enviar WP</button>
+                                        </div>
+                                    </td> 
+                                    <td class="p-4 text-[10px] text-blue-800 font-black uppercase italic">${f[1]}</td>
+                                    <td class="p-4 text-[10px] text-slate-600 font-medium uppercase">${f[3]}</td>
+                                    <td class="p-4 text-[10px] text-slate-800 font-black uppercase">${f[2]}</td>
+                                    <td class="p-4 text-right">
+                                        <span class="px-3 py-1 rounded-lg text-[8px] font-black uppercase ${bgStatus} ${statusColor}">${statusDesc}</span>
+                                        ${timerHTML}
+                                    </td>
+                                </tr>`;
+                        }).join('');
 
-                document.getElementById('countProg').innerText = counts.programadas;
-                document.getElementById('countPend').innerText = counts.pendientes;
-                document.getElementById('countPlanta').innerText = counts.enPlanta;
-                document.getElementById('countCarga').innerText = counts.despachadas;
+                        // --- DASHBOARD DE SEGURIDAD (PROTEGIDO) ---
+                        const htmlSeguridad = filasPlan.map(f => {
+                            const idPlan = f[0].trim().toUpperCase();
+                            const vReal = Object.values(activos).find(v => v.codigo.toUpperCase() === idPlan);
+                            const vHist = Object.values(historial).find(v => v.codigo.toUpperCase() === idPlan && v.estado === "SALIDA DEFINITIVA");
 
-                cont.innerHTML = `
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-500 font-black border-b">
-                                    <th class="p-4">Acciones QR</th>
-                                    <th class="p-4">Ruta Destino</th>
-                                    <th class="p-4">Chofer</th>
-                                    <th class="p-4">Placa</th>
-                                    <th class="p-4 text-right">Estatus</th>
-                                </tr>
-                            </thead>
-                            <tbody>${htmlLista || '<tr><td colspan="5" class="p-10 text-center">Sin datos</td></tr>'}</tbody>
-                        </table>
-                    </div>`;
-            });
-        } catch(e) { console.error(e); }
-    }
-};
+                            if (vReal) {
+                                return `<tr class="border-b border-slate-100 bg-blue-50/30">
+                                    <td class="p-4 text-[11px] text-slate-800 font-black uppercase">${vReal.placa}</td>
+                                    <td class="p-4 text-[10px] text-slate-600 uppercase font-medium">${vReal.chofer}</td>
+                                    <td class="p-4 text-[10px] text-slate-500 font-bold">${vReal.telefono || f[4]}</td>
+                                    <td class="p-4 text-[10px] text-slate-500">${vReal.fechaIngreso.split(',')[0]}</td>
+                                    <td class="p-4 text-[10px] text-slate-500 uppercase">${f[7] || 'N/A'}</td>
+                                    <td class="p-4 text-[10px] text-blue-600 font-bold">${vReal.fechaIngreso.split(',')[1] || '--:--'}</td>
+                                    <td class="p-4 text-[10px] text-slate-300">--:--</td>
+                                    <td class="p-4 text-right"><span class="px-2 py-1 rounded text-[9px] font-black bg-blue-100 text-blue-700 uppercase">EN PLANTA</span></td>
+                                </tr>`;
+                            } else if (vHist) {
+                                return `<tr class="border-b border-slate-100">
+                                    <td class="p-4 text-[11px] text-slate-800 font-black uppercase">${vHist.placa}</td>
+                                    <td class="p-4 text-[10px] text-slate-600 uppercase font-medium">${vHist.chofer}</td>
+                                    <td class="p-4 text-[10px] text-slate-500 font-bold">${vHist.telefono || f[4]}</td>
+                                    <td class="p-4 text-[10px] text-slate-500">${vHist.fechaIngreso.split(',')[0]}</td>
+                                    <td class="p-4 text-[10px] text-slate-500 uppercase">${f[7] || 'N/A'}</td>
+                                    <td class="p-4 text-[10px] text-blue-600 font-bold">${vHist.fechaIngreso.split(',')[1] || '--:--'}</td>
+                                    <td class="p-4 text-[10px] text-red-600 font-bold">${vHist.fechaSalida ? vHist.fechaSalida.split(',')[1] : '--:--'}</td>
+                                    <td class="p-4 text-right"><span class="px-2 py-1 rounded text-[9px] font-black bg-green-100 text-green-700 uppercase">DESPACHADO</span></td>
+                                </tr>`;
+                            }
+                            return '';
+                        }).join('');
 
-// --- FUNCIÓN: GENERAR IMAGEN PASE QR ---
-window.descargarFichaChofer = (codigo, chofer, placa, ruta) => {
-    const qrContenedor = document.createElement("div");
-    new QRCode(qrContenedor, { text: codigo, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.H });
+                        document.getElementById('countProg').innerText = counts.programadas;
+                        document.getElementById('countPend').innerText = counts.pendientes;
+                        document.getElementById('countPlanta').innerText = counts.enPlanta;
+                        document.getElementById('countCarga').innerText = counts.despachadas;
 
-    setTimeout(() => {
-        const qrCanvas = qrContenedor.querySelector('canvas');
-        if (!qrCanvas) return alert("Error generando QR");
+                        cont.innerHTML = `
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead><tr class="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-500 font-black border-b"><th class="p-4">Acciones</th><th class="p-4">Ruta Destino</th><th class="p-4">Chofer</th><th class="p-4">Placa</th><th class="p-4 text-right">Estatus</th></tr></thead>
+                                    <tbody>${htmlLista}</tbody>
+                                </table>
+                            </div>`;
+                            
+                        contSeg.innerHTML = `
+                            <div class="overflow-x-auto">
+                                <div class="bg-amber-50 p-4 border-b flex justify-between items-center"><p class="text-[10px] font-black text-amber-700 uppercase">⚠️ Resumen de Seguridad</p><p class="text-[10px] font-bold text-amber-600 uppercase">Unidades por arribar: <span class="text-lg ml-1 font-black">${counts.pendientes}</span></p></div>
+                                <table class="w-full text-left border-collapse">
+                                    <thead><tr class="bg-slate-100 text-[9px] uppercase tracking-widest text-slate-600 font-black border-b"><th class="p-4">Placa</th><th class="p-4">Chofer</th><th class="p-4">Teléfono</th><th class="p-4">Fecha</th><th class="p-4">Op. Logístico</th><th class="p-4">Ingreso</th><th class="p-4">Salida</th><th class="p-4 text-right">Estatus</th></tr></thead>
+                                    <tbody>${htmlSeguridad || '<tr><td colspan="8" class="p-10 text-center text-slate-400 font-bold uppercase italic">Sin unidades registradas hoy</td></tr>'}</tbody>
+                                </table>
+                            </div>`;
+                    });
+                } catch(e) { console.error(e); }
+            }
+        };
 
-        const finalCanvas = document.createElement("canvas");
-        const ctx = finalCanvas.getContext("2d");
-        finalCanvas.width = 400; finalCanvas.height = 600;
+        // --- FUNCIONES QR Y WHATSAPP ---
+        window.descargarFichaChofer = (codigo, chofer, placa, ruta) => {
+            const qrContenedor = document.createElement("div");
+            new QRCode(qrContenedor, { text: codigo, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.H });
+            setTimeout(() => {
+                const qrCanvas = qrContenedor.querySelector('canvas');
+                if (!qrCanvas) return alert("Error generando QR");
+                const finalCanvas = document.createElement("canvas");
+                const ctx = finalCanvas.getContext("2d");
+                finalCanvas.width = 400; finalCanvas.height = 600;
+                ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, 400, 600);
+                ctx.fillStyle = "#003399"; ctx.fillRect(0, 0, 400, 80);
+                ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
+                ctx.fillText("AGRIPAC - PASE DE INGRESO", 200, 50);
+                ctx.drawImage(qrCanvas, 72, 110, 256, 256);
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#64748b"; ctx.font = "bold 14px Arial"; ctx.fillText("CONDUCTOR", 200, 410);
+                ctx.fillStyle = "#000000"; ctx.font = "bold 22px Arial"; ctx.fillText(chofer.toUpperCase(), 200, 440);
+                ctx.fillStyle = "#64748b"; ctx.font = "bold 14px Arial"; ctx.fillText("PLACA", 200, 480);
+                ctx.fillStyle = "#003399"; ctx.font = "bold 32px Arial"; ctx.fillText(placa.toUpperCase(), 200, 515);
+                ctx.fillStyle = "#000000"; ctx.font = "bold 16px Arial"; ctx.fillText("DESTINO:", 200, 555);
+                ctx.fillStyle = "#1e293b"; ctx.font = "18px Arial"; ctx.fillText(ruta.toUpperCase(), 200, 580);
+                const link = document.createElement('a');
+                link.download = `PASE_${placa}_${chofer.split(' ')[0]}.png`;
+                link.href = finalCanvas.toDataURL("image/png");
+                link.click();
+                qrContenedor.remove();
+            }, 250);
+        };
 
-        ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, 400, 600);
-        ctx.fillStyle = "#003399"; ctx.fillRect(0, 0, 400, 80);
-        ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
-        ctx.fillText("AGRIPAC - PASE DE INGRESO", 200, 50);
+        window.enviarPaseWhatsApp = (telefono, chofer, placa, ruta, codigo) => {
+            if (!telefono || telefono === '') return alert("Sin número registrado.");
+            let tel = telefono.replace(/\D/g, ''); 
+            if (tel.startsWith('0')) tel = '593' + tel.substring(1); else if (tel.length === 9) tel = '593' + tel; 
+            const mensaje = `*AGRIPAC - PASE DE INGRESO*\n\nEstimado/a *${chofer}*,\nSe ha generado su pase para la unidad *${placa}* con destino *${ruta}*.\nID: ${codigo}\n\n*INSTRUCCIÓN:* Adjunto recibirá su QR para mostrar en Garita.\n\nAtentamente,\nLogística Agripac`;
+            window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`, '_blank');
+        };
 
-        ctx.drawImage(qrCanvas, 72, 110, 256, 256);
-        ctx.textAlign = "center";
-        ctx.fillStyle = "#64748b"; ctx.font = "bold 14px Arial"; ctx.fillText("CONDUCTOR", 200, 410);
-        ctx.fillStyle = "#000000"; ctx.font = "bold 22px Arial"; ctx.fillText(chofer.toUpperCase(), 200, 440);
-        ctx.fillStyle = "#64748b"; ctx.font = "bold 14px Arial"; ctx.fillText("PLACA", 200, 480);
-        ctx.fillStyle = "#003399"; ctx.font = "bold 32px Arial"; ctx.fillText(placa.toUpperCase(), 200, 515);
-        ctx.fillStyle = "#000000"; ctx.font = "bold 16px Arial"; ctx.fillText("DESTINO:", 200, 555);
-        ctx.fillStyle = "#1e293b"; ctx.font = "18px Arial"; ctx.fillText(ruta.toUpperCase(), 200, 580);
+        // --- NOTIFICACIONES DE PROCESO ---
+        window.enviarWhatsApp = (telefono, chofer, placa, ruta, anden) => {
+            if (!telefono || telefono === '') return;
+            let tel = telefono.replace(/\D/g, ''); 
+            if (tel.startsWith('0')) tel = '593' + tel.substring(1); else if (tel.length === 9) tel = '593' + tel; 
+            const mensaje = `*AGRIPAC - NOTIFICACIÓN DE LOGÍSTICA*\n\nEstimado/a *${chofer}*,\nLe informamos que su unidad con placa *${placa}* ha sido asignada al *Andén ${anden}*.\n\nPor favor, manténgase en espera hasta que se le autorice el parqueo.\n\nAtentamente,\nControl de Patio Agripac`;
+            window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`, '_blank');
+        };
 
-        const link = document.createElement('a');
-        link.download = `PASE_${placa}_${chofer.split(' ')[0]}.png`;
-        link.href = finalCanvas.toDataURL("image/png");
-        link.click();
-        qrContenedor.remove();
-    }, 250);
-};
+        window.enviarWhatsAppParqueo = (telefono, chofer, placa, anden, despachador) => {
+            if (!telefono || telefono === '') return;
+            let tel = telefono.replace(/\D/g, ''); 
+            if (tel.startsWith('0')) tel = '593' + tel.substring(1); else if (tel.length === 9) tel = '593' + tel; 
+            const mensaje = `*AGRIPAC - AUTORIZACIÓN DE PARQUEO*\n\nEstimado/a *${chofer}*,\nUnidad placa *${placa}* autorizada para parquear en *Andén ${anden}*.\n\nResponsable: ${despachador}\n\nAtentamente,\nControl de Patio Agripac`;
+            window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`, '_blank');
+        };
 
-// --- FUNCIÓN: ENVIAR TEXTO WHATSAPP ---
-window.enviarPaseWhatsApp = (telefono, chofer, placa, ruta, codigo) => {
-    if (!telefono || telefono === '') return alert("Sin número registrado.");
-    let tel = telefono.replace(/\D/g, ''); 
-    if (tel.startsWith('0')) tel = '593' + tel.substring(1); else if (tel.length === 9) tel = '593' + tel; 
-
-    const mensaje = `*AGRIPAC - PASE DE INGRESO DE UNIDAD*\n\n` +
-                    `Estimado/a *${chofer}*,\n\n` +
-                    `Se ha generado su pase para la unidad *${placa}* con destino a *${ruta}*.\n\n` +
-                    `*ID DE INGRESO:* ${codigo}\n\n` +
-                    `*INSTRUCCIÓN:* A continuación le enviaré la imagen del Código QR. Por favor, muéstrela al guardia en Garita para su ingreso.\n\n` +
-                    `Atentamente,\nLogística Agripac`;
-
-    window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`, '_blank');
-};
-        // --- PROCESOS CON REGISTRO DE MOVIMIENTO ---
+        // --- PROCESOS FIREBASE ---
         window.procUpdate = async (id, data) => {
             const vRef = ref(db, `vehiculos/${id}`);
             const snap = await get(vRef);
-            if(snap.exists()) {
-                await registrarMovimiento(snap.val().codigo, data.estado.replace(/_/g,' '));
-            }
+            if(snap.exists()) await registrarMovimiento(snap.val().codigo, data.estado.replace(/_/g,' '));
             update(vRef, data).catch(e => alert("Error: " + e.message));
         };
         
@@ -284,157 +304,58 @@ window.enviarPaseWhatsApp = (telefono, chofer, placa, ruta, codigo) => {
                 const snapshot = await get(vehiculoRef);
                 if (snapshot.exists()) {
                     const data = snapshot.val();
+                    data.fechaSalida = new Date().toLocaleString();
                     await registrarMovimiento(data.codigo, "SALIDA DEFINITIVA");
+                    await push(ref(db, 'historial'), { ...data, estado: "SALIDA DEFINITIVA", fechaMovimiento: new Date().toISOString() });
                     await remove(vehiculoRef);
                     alert("Vehículo despachado correctamente.");
                 }
             } catch (e) { alert("Error: " + e.message); }
         };
 
-window.registrarIngreso = async (idManual = null) => {
+        window.registrarIngreso = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value.trim().toUpperCase();
             if(!id) return;
             try {
                 const snapshotActual = await get(vehiculosRef);
-                if (snapshotActual.exists()) {
-                    const vehiculosActivos = snapshotActual.val();
-                    const yaExiste = Object.values(vehiculosActivos).some(v => v.codigo.toUpperCase() === id);
-                    if (yaExiste) { alert("⚠️ YA REGISTRADO EN PATIO"); return; }
-                }
-                
+                if (snapshotActual.exists() && Object.values(snapshotActual.val()).some(v => v.codigo.toUpperCase() === id)) return alert("⚠️ YA REGISTRADO EN PATIO");
                 const res = await fetch(URL_SHEET_CSV);
                 const csv = await res.text();
                 const f = csv.split("\n").map(r => r.split(",")).find(row => row[0].trim().toUpperCase() === id);
-                
                 if(f) {
-                    // Guardamos temporalmente los datos del Excel para usarlos tras elegir la condición
-                    window.datosIngresoTemporal = {
-                        codigo: f[0].trim(), 
-                        placa: f[2].trim(), 
-                        chofer: f[3].trim(), 
-                        area: f[8].trim(),
-                        telefono: f[4] ? f[4].trim() : '',
-                        ruta: f[1] ? f[1].trim() : ''
-                    };
-
-                    // Abrimos el modal con una instrucción clara
+                    window.datosIngresoTemporal = { codigo: f[0].trim(), placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(), telefono: f[4].trim(), ruta: f[1].trim() };
                     window.abrirModal('CONDICIÓN DE ENTRADA', 'Especifique: VACÍO, PALLETS VACÍOS o DEVOLUCIÓN', async (condicion) => {
                         const data = window.datosIngresoTemporal;
-                        await push(vehiculosRef, {
-                            ...data,
-                            condicionEntrada: condicion.toUpperCase(),
-                            estado: 'PESAJE_ENTRADA', 
-                            anden: '-', 
-                            pEntrada:0, 
-                            pSalida:0, 
-                            fechaIngreso: new Date().toLocaleString()
-                        });
-                        
+                        await push(vehiculosRef, { ...data, condicionEntrada: condicion.toUpperCase(), estado: 'PESAJE_ENTRADA', anden: '-', pEntrada:0, pSalida:0, fechaIngreso: new Date().toLocaleString() });
                         await registrarMovimiento(data.codigo, `Ingreso - ${condicion.toUpperCase()}`);
-                        alert("✅ INGRESO REGISTRADO: " + data.placa);
                         document.getElementById('inputGarita').value = '';
-                        window.datosIngresoTemporal = null;
                     });
                 } else alert("❌ ID NO PLANIFICADO");
-            } catch (e) { alert("Error de red o base de datos"); }
+            } catch (e) { alert("Error de red"); }
         };
 
-window.descargarReporte = async () => {
-    const snapshot = await get(ref(db, 'historial'));
-    if (!snapshot.exists()) return alert("Sin movimientos registrados aún.");
-
-    const data = snapshot.val();
-    
-    // 1. Encabezados del Excel
-    const filasExcel = [
-        ["ID UNICO", "Accion", "Fecha", "Hora", "Usuario"]
-    ];
-
-    // 2. Procesar los datos de Firebase
-    Object.values(data).forEach(v => {
-        const fechaObj = v.fechaMovimiento ? new Date(v.fechaMovimiento) : new Date();
-        
-        // Formato DD/MM/YYYY
-        const fecha = fechaObj.toLocaleDateString('es-EC'); 
-        
-        // Formato 24 Horas (HH:mm) sin AM/PM
-        const hora = fechaObj.toLocaleTimeString('es-EC', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            hour12: false 
-        });
-
-        filasExcel.push([
-            v.codigo,          // ID UNICO
-            v.estado,          // Accion
-            fecha,             // Fecha
-            hora,              // Hora
-            v.usuarioAccion    // Usuario
-        ]);
-    });
-
-    // 3. Generar el libro de Excel usando SheetJS
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(filasExcel);
-
-    // Ajuste de ancho de columnas (opcional pero recomendado)
-    ws['!cols'] = [{ wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 25 }];
-
-    XLSX.utils.book_append_sheet(wb, ws, "Auditoria Movimientos");
-
-    // 4. Descargar archivo nativo .xlsx
-    const nombreArchivo = `Reporte_Agripac_${new Date().toLocaleDateString().replace(/\//g, '-')}.xlsx`;
-    XLSX.writeFile(wb, nombreArchivo);
-};
-
-        // --- FUNCIÓN PARA ENVIAR WHATSAPP (SIN EMOJIS) ---
-        window.enviarWhatsApp = (telefono, chofer, placa, ruta, anden) => {
-            if (!telefono || telefono === '') {
-                alert("El conductor no tiene número de teléfono registrado en la planificación.");
-                return;
-            }
-            
-            let tel = telefono.replace(/\D/g, ''); 
-            if (tel.startsWith('0')) tel = '593' + tel.substring(1);
-            else if (tel.length === 9) tel = '593' + tel; 
-
-            const mensaje = `*AGRIPAC - NOTIFICACIÓN DE LOGÍSTICA*\n\n` +
-                            `Estimado/a *${chofer}*,\n\n` +
-                            `Le informamos que su unidad con placa *${placa}* (Destino: ${ruta}) ha sido asignada al *Andén ${anden}*.\n\n` +
-                            `*IMPORTANTE:* Por favor, manténgase en espera en su ubicación actual. El despachador le confirmará en breve el momento exacto en el que deberá acercarse a parquear para iniciar el proceso de carga.\n\n` +
-                            `Atentamente,\nControl de Patio Agripac`;
-
-            const url = `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`;
-            window.open(url, '_blank');
+        window.descargarReporte = async () => {
+            const snapshot = await get(ref(db, 'historial'));
+            if (!snapshot.exists()) return alert("Sin movimientos registrados aún.");
+            const data = snapshot.val();
+            const filasExcel = [["ID UNICO", "Accion", "Fecha", "Hora", "Usuario"]];
+            Object.values(data).forEach(v => {
+                const fO = v.fechaMovimiento ? new Date(v.fechaMovimiento) : new Date();
+                filasExcel.push([v.codigo, v.estado, fO.toLocaleDateString('es-EC'), fO.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false }), v.usuarioAccion]);
+            });
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(filasExcel);
+            XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
+            XLSX.writeFile(wb, `Reporte_Patio_Agripac_${new Date().toLocaleDateString().replace(/\//g,'-')}.xlsx`);
         };
 
-        window.enviarWhatsAppParqueo = (telefono, chofer, placa, anden, despachador) => {
-            if (!telefono || telefono === '') { alert("El conductor no tiene número registrado."); return; }
-            let tel = telefono.replace(/\D/g, ''); 
-            if (tel.startsWith('0')) tel = '593' + tel.substring(1); else if (tel.length === 9) tel = '593' + tel; 
-
-            const mensaje = `*AGRIPAC - AUTORIZACIÓN DE INGRESO AL ANDÉN*\n\n` +
-                            `Estimado/a *${chofer}*,\n\n` +
-                            `Su unidad con placa *${placa}* ha sido autorizada para ingresar a la zona de carga.\n\n` +
-                            `*INSTRUCCIÓN:* Por favor, acérquese al *Andén ${anden}* para parquearse inmediatamente.\n` +
-                            `*Responsable de Carga:* ${despachador}\n\n` +
-                            `El responsable le indicará en el andén el momento exacto en que iniciará la carga.\n\n` +
-                            `Atentamente,\nControl de Patio Agripac`;
-
-            window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`, '_blank');
-        };
-        
-        // --- MONITOR DE PATIO ---
-        // --- MONITOR DE PATIO ---
+        // --- MONITOR PROCESOS ---
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
             const L = { 'secBascula': document.getElementById('lBascula'), 'secDist': document.getElementById('lDist'), 'secCarga': document.getElementById('lCarga'), 'secGaritaOut': document.getElementById('lGaritaOut') };
             let counts = { bascula: 0, dist: 0, carga: 0, out: 0 };
-            
-            // Reiniciamos contadores y registro de cronómetros
             window.vehiculosCargando = {};
             Object.values(L).forEach(s => s.innerHTML = '');
-
             if (data) {
                 Object.keys(data).forEach(key => {
                     const v = data[key];
@@ -443,51 +364,25 @@ window.descargarReporte = async () => {
                     if (v.estado.includes('CARGA')) counts.carga++;
                     if (v.estado === 'LISTO_SALIDA') counts.out++;
 
-                    // Lógica del Cronómetro Ocultando en Báscula y Garita Out
                     let timerUI = '';
-                    
                     if (v.estado === 'CARGANDO' && v.inicioCarga) {
                         window.vehiculosCargando[v.codigo] = v.inicioCarga; 
-                        timerUI = `<div id="tMon_${v.codigo}" class="text-[10px] font-mono font-black text-orange-600 bg-orange-50 px-3 py-1 rounded-lg inline-block mb-3 border border-orange-200 shadow-inner">⏱ 00:00:00</div>`;
+                        timerUI = `<div id="tMon_${v.codigo}" class="text-[10px] font-mono font-black text-orange-600 bg-orange-50 px-3 py-1 rounded-lg inline-block mb-3 border border-orange-200">⏱ 00:00:00</div>`;
                     } else if (v.finCarga && v.inicioCarga && (v.estado === 'CARGA_REGISTRAR_PRECINTOS' || v.estado === 'DIST_DOCS_SALIDA')) {
-                        // SOLO MUESTRA EL TIEMPO CONGELADO EN ESTOS DOS ESTADOS (PRECINTOS Y DOCS DE SALIDA)
                         const diff = Math.floor((v.finCarga - v.inicioCarga) / 1000);
-                        const h = String(Math.floor(diff / 3600)).padStart(2, '0');
-                        const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-                        const s = String(diff % 60).padStart(2, '0');
-                        timerUI = `<div class="text-[10px] font-mono font-black text-slate-600 bg-slate-100 px-3 py-1 rounded-lg inline-block mb-3 border border-slate-300 shadow-inner">⏱ Tiempo de Carga: ${h}:${m}:${s}</div>`;
+                        const h = String(Math.floor(diff / 3600)).padStart(2, '0'), m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0'), s = String(diff % 60).padStart(2, '0');
+                        timerUI = `<div class="text-[10px] font-mono font-black text-slate-600 bg-slate-100 px-3 py-1 rounded-lg inline-block mb-3 border border-slate-300">⏱ Tiempo: ${h}:${m}:${s}</div>`;
                     }
 
-                    const txtDespachador = v.despachador ? `<span class="text-[9px] text-indigo-600 font-bold bg-indigo-50 px-2 rounded-full ml-2">Resp: ${v.despachador}</span>` : '';
+                    const txtDesp = v.despachador ? `<span class="text-[8px] text-indigo-600 font-bold bg-indigo-50 px-2 rounded-full ml-2 uppercase tracking-tighter">Resp: ${v.despachador}</span>` : '';
+                    const card = (btn) => `<div class="bg-white border rounded-2xl p-6 mb-4 shadow-sm animate-fade"><div class="flex items-center mb-2"><span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">${v.estado.replace(/_/g,' ')}</span>${txtDesp}<span class="text-[8px] bg-slate-50 text-slate-500 ml-auto font-black px-2 py-0.5 rounded uppercase">${v.condicionEntrada || 'VACÍO'}</span></div>${timerUI}<h3 class="text-2xl font-black text-slate-800 italic leading-none mb-1">${v.placa}</h3><p class="text-[10px] text-slate-500 font-bold uppercase mb-5">${v.chofer} | ${v.ruta}</p>${btn}</div>`;
 
-                    const card = (btn) => `
-                        <div class="bg-white border rounded-2xl p-6 mb-4 shadow-sm animate-fade">
-                            <div class="flex items-center mb-2">
-                                <span class="block text-[9px] font-black text-slate-400 uppercase tracking-widest">${v.estado.replace(/_/g,' ')}</span>
-                                ${txtDespachador}
-                            </div>
-                            ${timerUI}
-                            <h3 class="text-2xl font-black text-slate-800 italic leading-none mb-1">${v.placa}</h3>
-                            <p class="text-[10px] text-slate-500 font-bold uppercase mb-5 tracking-wider">${v.chofer} | ${v.ruta || v.area}</p>
-                            ${btn}
-                        </div>`;
-
-                    if(v.estado === 'PESAJE_ENTRADA') L.secBascula.innerHTML += card(`<button onclick="window.abrirModal('BÁSCULA','PESO ENTRADA', (val)=>window.procUpdate('${key}',{pEntrada:val, estado:'PESAJE_ENTRADA_REGISTRADO'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Registrar Peso</button>`);
+                    if(v.estado === 'PESAJE_ENTRADA') L.secBascula.innerHTML += card(`<button onclick="window.abrirModal('BÁSCULA','PESO ENTRADA', (val)=>window.procUpdate('${key}',{pEntrada:val, estado:'PESAJE_ENTRADA_REGISTRADO'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase">Registrar Peso</button>`);
                     else if(v.estado === 'PESAJE_ENTRADA_REGISTRADO') L.secDist.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'DIST_DOCS_CARGA'})" class="w-full bg-slate-700 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Carga</button>`);
-                    else if(v.estado === 'DIST_DOCS_CARGA') L.secCarga.innerHTML += card(`
-                        <button onclick="window.abrirModal('ASIGNACIÓN','NÚMERO DE ANDÉN', (val) => { 
-                            window.procUpdate('${key}',{anden:val, estado:'CARGA_ESPERA_PARQUEO'});
-                            window.enviarWhatsApp('${v.telefono || ''}', '${v.chofer}', '${v.placa}', '${v.ruta || v.area}', val);
-                        })" class="w-full bg-slate-800 text-white py-4 rounded-xl font-black text-[10px] uppercase">Asignar Andén y Notificar (WP)</button>
-                    `);
-                    else if(v.estado === 'CARGA_ESPERA_PARQUEO') L.secCarga.innerHTML += card(`
-                        <button onclick="window.abrirModal('AUTORIZACIÓN','NOMBRE DEL DESPACHADOR', (val) => {
-                            window.procUpdate('${key}',{despachador:val, estado:'CARGA_LISTO_INICIO'});
-                            window.enviarWhatsAppParqueo('${v.telefono || ''}', '${v.chofer}', '${v.placa}', '${v.anden}', val);
-                        })" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Autorizar Parqueo y Notificar (WP)</button>
-                    `);
-                    else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Iniciar Carga (Reloj)</button>`);
-                    else if(v.estado === 'CARGANDO') L.secCarga.innerHTML += card(`<button onclick="if(confirm('¿ESTÁ SEGURO DE FINALIZAR LA CARGA? El cronómetro se detendrá definitivamente.')) { window.procUpdate('${key}', {estado:'CARGA_REGISTRAR_PRECINTOS', finCarga: Date.now()}) }" class="w-full bg-red-600 text-white py-4 rounded-xl font-black text-[10px] uppercase animate-pulse">Confirmar Fin de Carga</button>`);
+                    else if(v.estado === 'DIST_DOCS_CARGA') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('ASIGNACIÓN','NÚMERO DE ANDÉN', (val) => { window.procUpdate('${key}',{anden:val, estado:'CARGA_ESPERA_PARQUEO'}); window.enviarWhatsApp('${v.telefono || ''}', '${v.chofer}', '${v.placa}', '${v.ruta}', val); })" class="w-full bg-slate-800 text-white py-4 rounded-xl font-black text-[10px] uppercase">Asignar Andén y Notificar</button>`);
+                    else if(v.estado === 'CARGA_ESPERA_PARQUEO') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('AUTORIZACIÓN','NOMBRE DEL DESPACHADOR', (val) => { window.procUpdate('${key}',{despachador:val, estado:'CARGA_LISTO_INICIO'}); window.enviarWhatsAppParqueo('${v.telefono || ''}', '${v.chofer}', '${v.placa}', '${v.anden}', val); })" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Autorizar Parqueo y Notificar</button>`);
+                    else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Iniciar Carga</button>`);
+                    else if(v.estado === 'CARGANDO') L.secCarga.innerHTML += card(`<button onclick="if(confirm('¿FINALIZAR CARGA?')){ window.procUpdate('${key}', {estado:'CARGA_REGISTRAR_PRECINTOS', finCarga: Date.now()}) }" class="w-full bg-red-600 text-white py-4 rounded-xl font-black text-[10px] uppercase animate-pulse">Confirmar Fin de Carga</button>`);
                     else if(v.estado === 'CARGA_REGISTRAR_PRECINTOS') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('SEGURIDAD','NÚMEROS DE PRECINTOS', (val)=>window.procUpdate('${key}',{precintos:val, estado:'DIST_DOCS_SALIDA'}))" class="w-full bg-green-600 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Registrar Precintos</button>`);
                     else if(v.estado === 'DIST_DOCS_SALIDA') L.secDist.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Salida</button>`);
                     else if(v.estado === 'PESAJE_SALIDA') L.secBascula.innerHTML += card(`<button onclick="window.abrirModal('BÁSCULA','PESO SALIDA', (val)=>window.procUpdate('${key}',{pSalida:val, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Peso Salida</button>`);
@@ -540,9 +435,7 @@ window.descargarReporte = async () => {
     <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
         <div class="absolute inset-0 z-0"><img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover shadow-inner"><div class="absolute inset-0 bg-blue-950/40"></div></div>
         <div class="relative z-10 w-full h-full flex items-center p-8 lg:p-20">
-            <div class="w-1/2 text-white hidden lg:block pr-20">
-                <h1 class="text-7xl font-black italic tracking-tighter mb-4 italic">CONTROL DE PATIO <br><span class="text-[#FFB800]">AGRIPAC</span></h1>
-            </div>
+            <div class="w-1/2 text-white hidden lg:block pr-20"><h1 class="text-7xl font-black italic tracking-tighter mb-4">CONTROL DE PATIO <br><span class="text-[#FFB800]">AGRIPAC</span></h1></div>
             <div class="w-full lg:w-1/2 flex justify-end">
                 <div class="bg-white p-12 rounded-[3.5rem] shadow-2xl w-full max-w-lg animate-fade">
                     <h2 class="text-5xl font-black text-slate-900 mb-10 italic tracking-tighter">Sign In</h2>
@@ -557,21 +450,18 @@ window.descargarReporte = async () => {
     </div>
 
     <div id="mainApp" class="hidden h-screen flex flex-col">
-<header class="bg-white border-b py-5 px-8 flex justify-between items-center sticky top-0 z-40">
+        <header class="bg-white border-b py-5 px-8 flex justify-between items-center sticky top-0 z-40">
             <div class="flex items-center gap-4">
                 <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-10">
-                <h1 class="text-xl lg:text-2xl font-black text-[#003399] uppercase italic tracking-tighter">
-                    Planificación de distribución Balanfarina PT
-                </h1>
+                <h1 class="text-xl lg:text-2xl font-black text-[#003399] uppercase italic tracking-tighter">Planificación de distribución Balanfarina PT</h1>
             </div>
-            <button onclick="logout()" class="text-[9px] font-black uppercase text-red-500 bg-red-50 px-4 py-2 rounded-xl border border-red-100 hover:bg-red-100 transition-colors">
-                Cerrar Sesión
-            </button>
+            <button onclick="logout()" class="text-[9px] font-black uppercase text-red-500 bg-red-50 px-4 py-2 rounded-xl border">Cerrar Sesión</button>
         </header>
 
         <nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[77px] z-30">
-            <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard</button>
-            <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In) <span id="badgeGarita" class="ml-1 bg-slate-100 px-2 py-0.5 rounded-full text-[9px]">0</span></button>
+            <button data-sec="secDashboard" onclick="mostrarSeccion('secDashboard', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard Operativo</button>
+            <button data-sec="secSeguridad" onclick="mostrarSeccion('secSeguridad', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Dashboard Seguridad</button>
+            <button data-sec="secGarita" onclick="mostrarSeccion('secGarita', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Garita (In)</button>
             <button data-sec="secBascula" onclick="mostrarSeccion('secBascula', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Báscula <span id="badgeBascula" class="ml-1 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-[9px]">0</span></button>
             <button data-sec="secDist" onclick="mostrarSeccion('secDist', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Distribución <span id="badgeDist" class="ml-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-[9px]">0</span></button>
             <button data-sec="secCarga" onclick="mostrarSeccion('secCarga', this)" class="tab-btn flex-none px-6 py-5 text-[10px] font-bold uppercase text-slate-400 whitespace-nowrap">Carga <span id="badgeCarga" class="ml-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[9px]">0</span></button>
@@ -580,16 +470,18 @@ window.descargarReporte = async () => {
 
         <main class="flex-grow overflow-y-auto p-6">
             <div id="secDashboard" class="seccion-app hidden max-w-4xl mx-auto">
-                <div class="mb-4 flex justify-end">
-                    <button onclick="descargarReporte()" class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-[10px] uppercase shadow-lg">📥 Excel Movimientos</button>
-                </div>
+                <div class="mb-4 flex justify-end"><button onclick="descargarReporte()" class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-[10px] uppercase">📥 Reporte Excel</button></div>
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    <div class="bg-white border-l-4 border-slate-400 p-5 rounded-xl shadow-sm"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Programadas</p><p id="countProg" class="text-3xl font-black text-slate-800">0</p></div>
-                    <div class="bg-white border-l-4 border-amber-400 p-5 rounded-xl shadow-sm"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pend. Arribo</p><p id="countPend" class="text-3xl font-black text-amber-500">0</p></div>
-                    <div class="bg-white border-l-4 border-blue-600 p-5 rounded-xl shadow-sm"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">En Planta</p><p id="countPlanta" class="text-3xl font-black text-blue-700">0</p></div>
-                    <div class="bg-white border-l-4 border-green-500 p-5 rounded-xl shadow-sm"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Despachadas</p><p id="countCarga" class="text-3xl font-black text-green-600">0</p></div>
+                    <div class="bg-white border-l-4 border-slate-400 p-5 rounded-xl"><p class="text-[9px] font-black text-slate-400 uppercase">Programadas</p><p id="countProg" class="text-3xl font-black text-slate-800">0</p></div>
+                    <div class="bg-white border-l-4 border-amber-400 p-5 rounded-xl"><p class="text-[9px] font-black text-amber-400 uppercase">Pendientes</p><p id="countPend" class="text-3xl font-black text-amber-500">0</p></div>
+                    <div class="bg-white border-l-4 border-blue-600 p-5 rounded-xl"><p class="text-[9px] font-black text-blue-400 uppercase">En Planta</p><p id="countPlanta" class="text-3xl font-black text-blue-700">0</p></div>
+                    <div class="bg-white border-l-4 border-green-500 p-5 rounded-xl"><p class="text-[9px] font-black text-green-400 uppercase">Despachadas</p><p id="countCarga" class="text-3xl font-black text-green-600">0</p></div>
                 </div>
-                <div class="bg-white border rounded-2xl overflow-hidden shadow-sm"><div id="lDashboard"></div></div>
+                <div class="bg-white border rounded-2xl overflow-hidden"><div id="lDashboard"></div></div>
+            </div>
+
+            <div id="secSeguridad" class="seccion-app hidden max-w-6xl mx-auto">
+                <div class="bg-white border rounded-2xl overflow-hidden shadow-sm"><div id="lSeguridad"></div></div>
             </div>
 
             <div id="secGarita" class="seccion-app hidden max-w-xl mx-auto"><div class="bg-white border p-10 rounded-[2.5rem] text-center shadow-sm"><button onclick="uiScanner()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black mb-8 text-xs">📷 ESCANEAR QR</button><input id="inputGarita" type="text" placeholder="ID" class="w-full p-5 bg-slate-50 border rounded-2xl mb-4 text-center font-black uppercase outline-none"><button onclick="registrarIngreso()" class="w-full border-2 border-[#003399] text-[#003399] py-4 rounded-2xl font-black uppercase text-[10px]">Validar Acceso</button></div></div>
@@ -600,19 +492,8 @@ window.descargarReporte = async () => {
         </main>
     </div>
 
-    <div id="mainModal" class="modal-overlay fixed inset-0 z-[300] items-center justify-center p-6 animate-fade">
-        <div class="bg-white w-full max-w-sm rounded-[3rem] p-10 border-t-8 border-[#003399] shadow-2xl">
-            <h2 id="mTitle" class="text-center font-black text-slate-800 text-xl uppercase italic mb-1 italic">TÍTULO</h2>
-            <p id="mLabel" class="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 italic">Instrucción</p>
-            <input id="mInput" type="text" class="w-full p-5 bg-slate-50 border rounded-2xl mb-8 text-center font-black text-blue-900 text-xl uppercase outline-none">
-            <div class="flex gap-4"><button onclick="cerrarModal()" class="flex-1 text-[10px] font-black uppercase text-slate-400 tracking-tighter">Cancelar</button><button onclick="confirmarModal()" class="flex-[2] bg-[#003399] text-white py-4 rounded-xl font-black text-xs uppercase tracking-tighter">Confirmar</button></div>
-        </div>
-    </div>
-
-    <div id="rc" class="hidden fixed inset-0 bg-white z-[500] flex flex-col items-center justify-center p-6">
-        <div id="reader" class="w-full max-w-sm rounded-3xl overflow-hidden border-4 border-[#003399] mb-8"></div>
-        <button onclick="location.reload()" class="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-slate-100 px-8 py-3 rounded-full">Cerrar</button>
-    </div>
+    <div id="mainModal" class="modal-overlay fixed inset-0 z-[300] items-center justify-center p-6 animate-fade"><div class="bg-white w-full max-w-sm rounded-[3rem] p-10 border-t-8 border-[#003399] shadow-2xl"><h2 id="mTitle" class="text-center font-black text-slate-800 text-xl uppercase italic mb-1 italic">TÍTULO</h2><p id="mLabel" class="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 italic">Instrucción</p><input id="mInput" type="text" class="w-full p-5 bg-slate-50 border rounded-2xl mb-8 text-center font-black text-blue-900 text-xl uppercase outline-none"><div class="flex gap-4"><button onclick="cerrarModal()" class="flex-1 text-[10px] font-black uppercase text-slate-400 tracking-tighter">Cancelar</button><button onclick="confirmarModal()" class="flex-[2] bg-[#003399] text-white py-4 rounded-xl font-black text-xs uppercase tracking-tighter">Confirmar</button></div></div></div>
+    <div id="rc" class="hidden fixed inset-0 bg-white z-[500] flex flex-col items-center justify-center p-6"><div id="reader" class="w-full max-w-sm rounded-3xl overflow-hidden border-4 border-[#003399] mb-8"></div><button onclick="location.reload()" class="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-slate-100 px-8 py-3 rounded-full">Cerrar</button></div>
 
 </body>
 </html>
