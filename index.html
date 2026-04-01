@@ -291,7 +291,7 @@ window.enviarPaseWhatsApp = (telefono, chofer, placa, ruta, codigo) => {
             } catch (e) { alert("Error: " + e.message); }
         };
 
-        window.registrarIngreso = async (idManual = null) => {
+window.registrarIngreso = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value.trim().toUpperCase();
             if(!id) return;
             try {
@@ -299,26 +299,44 @@ window.enviarPaseWhatsApp = (telefono, chofer, placa, ruta, codigo) => {
                 if (snapshotActual.exists()) {
                     const vehiculosActivos = snapshotActual.val();
                     const yaExiste = Object.values(vehiculosActivos).some(v => v.codigo.toUpperCase() === id);
-                    if (yaExiste) { alert("⚠️ YA REGISTRADO"); return; }
+                    if (yaExiste) { alert("⚠️ YA REGISTRADO EN PATIO"); return; }
                 }
+                
                 const res = await fetch(URL_SHEET_CSV);
                 const csv = await res.text();
                 const f = csv.split("\n").map(r => r.split(",")).find(row => row[0].trim().toUpperCase() === id);
+                
                 if(f) {
-                    const codigo = f[0].trim();
-                    await push(vehiculosRef, {
-                        codigo: codigo, 
+                    // Guardamos temporalmente los datos del Excel para usarlos tras elegir la condición
+                    window.datosIngresoTemporal = {
+                        codigo: f[0].trim(), 
                         placa: f[2].trim(), 
                         chofer: f[3].trim(), 
                         area: f[8].trim(),
                         telefono: f[4] ? f[4].trim() : '',
-                        ruta: f[1] ? f[1].trim() : '', 
-                        estado: 'PESAJE_ENTRADA', anden: '-', pEntrada:0, pSalida:0, fechaIngreso: new Date().toLocaleString()
+                        ruta: f[1] ? f[1].trim() : ''
+                    };
+
+                    // Abrimos el modal con una instrucción clara
+                    window.abrirModal('CONDICIÓN DE ENTRADA', 'Especifique: VACÍO, PALLETS VACÍOS o DEVOLUCIÓN', async (condicion) => {
+                        const data = window.datosIngresoTemporal;
+                        await push(vehiculosRef, {
+                            ...data,
+                            condicionEntrada: condicion.toUpperCase(),
+                            estado: 'PESAJE_ENTRADA', 
+                            anden: '-', 
+                            pEntrada:0, 
+                            pSalida:0, 
+                            fechaIngreso: new Date().toLocaleString()
+                        });
+                        
+                        await registrarMovimiento(data.codigo, `Ingreso - ${condicion.toUpperCase()}`);
+                        alert("✅ INGRESO REGISTRADO: " + data.placa);
+                        document.getElementById('inputGarita').value = '';
+                        window.datosIngresoTemporal = null;
                     });
-                    await registrarMovimiento(codigo, "INGRESO GARITA");
-                    document.getElementById('inputGarita').value = '';
                 } else alert("❌ ID NO PLANIFICADO");
-            } catch (e) { alert("Error de red"); }
+            } catch (e) { alert("Error de red o base de datos"); }
         };
 
 window.descargarReporte = async () => {
