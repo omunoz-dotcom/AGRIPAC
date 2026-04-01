@@ -199,17 +199,51 @@
             } catch (e) { alert("Error de red"); }
         };
 
-        window.descargarReporte = async () => {
-            const snapshot = await get(ref(db, 'historial'));
-            if (!snapshot.exists()) return alert("Sin historial.");
-            const data = snapshot.val();
-            let csvContent = "data:text/csv;charset=utf-8,PLACA,CHOFER,RUTA,OPERADOR,INGRESO,SALIDA,USUARIO\n";
-            Object.values(data).forEach(v => {
-                csvContent += [v.placa, v.chofer, v.ruta || v.area || "N/A", v.operador || "N/A", v.fechaIngreso, v.fechaSalida, v.usuarioDespacho].join(",") + "\n";
-            });
-            window.open(encodeURI(csvContent));
-        };
+window.descargarReporte = async () => {
+    const snapshot = await get(ref(db, 'historial'));
+    if (!snapshot.exists()) return alert("Sin movimientos registrados aún.");
 
+    const data = snapshot.val();
+    // Encabezados exactos según tu imagen
+    let csvContent = "data:text/csv;charset=utf-8,ID UNICO,Accion,Fecha,Hora,Usuario\n";
+
+    Object.values(data).forEach(v => {
+        // Extraemos fecha y hora por separado
+        const fechaObj = v.fechaMovimiento ? new Date(v.fechaMovimiento) : new Date();
+        const fecha = fechaObj.toLocaleDateString();
+        const hora = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const fila = [
+            v.codigo,          // ID UNICO
+            v.estado,          // Accion
+            fecha,             // Fecha
+            hora,              // Hora
+            v.usuarioAccion    // Usuario
+        ].join(",");
+        csvContent += fila + "\n";
+    });
+
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Reporte_Movimientos_Agripac.csv`);
+    document.body.appendChild(link);
+    link.click();
+};
+
+// Función para registrar cada movimiento en el historial
+const registrarMovimiento = async (vehiculoData, accion) => {
+    const session = JSON.parse(localStorage.getItem('agripac_session'));
+    const log = {
+        codigo: vehiculoData.codigo,
+        estado: accion,
+        fechaMovimiento: new Date().toISOString(),
+        usuarioAccion: session ? session.email : "Sistema"
+    };
+    await push(ref(db, 'historial'), log);
+};
+        
         // MONITOR
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
