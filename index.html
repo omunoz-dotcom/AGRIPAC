@@ -472,9 +472,16 @@ window.descargarReporte = async () => {
     </div>
 
     <div id="mainApp" class="hidden h-screen flex flex-col">
-        <header class="bg-white border-b py-5 px-8 flex justify-between items-center sticky top-0 z-40">
-            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-8">
-            <button onclick="logout()" class="text-[9px] font-black uppercase text-red-500 bg-red-50 px-4 py-2 rounded-xl">Cerrar Sesión</button>
+<header class="bg-white border-b py-5 px-8 flex justify-between items-center sticky top-0 z-40">
+            <div class="flex items-center gap-4">
+                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s" class="h-10">
+                <h1 class="text-xl lg:text-2xl font-black text-[#003399] uppercase italic tracking-tighter">
+                    Planificación de distribución Balanfarina PT
+                </h1>
+            </div>
+            <button onclick="logout()" class="text-[9px] font-black uppercase text-red-500 bg-red-50 px-4 py-2 rounded-xl border border-red-100 hover:bg-red-100 transition-colors">
+                Cerrar Sesión
+            </button>
         </header>
 
         <nav class="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[77px] z-30">
