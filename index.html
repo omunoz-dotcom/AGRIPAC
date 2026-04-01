@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGRIPAC - Gestión de Patio v5.2</title>
+    <title>AGRIPAC - Gestión de Patio v5.3</title>
     <link rel="icon" type="image/png" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRgdU9ENZe0xEEBIekcna9hIY1LQynypXsvGw&s">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -36,9 +36,29 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         const vehiculosRef = ref(db, 'vehiculos');
+        const historialRef = ref(db, 'historial');
         const URL_SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfWCI46jBJQME3RdDvIbpjYXkdB7x5eSZ7--TigTzfktTllhQ5SdnIcMMfs-8u-E3heuT1eH4Aqi1a/pub?output=csv";
 
-        // --- FUNCIÓN DE AUDITORÍA (CORREGIDA) ---
+        // --- GLOBAL PARA CRONÓMETROS ---
+        window.vehiculosCargando = {};
+        setInterval(() => {
+            const ahora = Date.now();
+            for (const [codigo, inicio] of Object.entries(window.vehiculosCargando)) {
+                if (!inicio) continue;
+                const diff = Math.floor((ahora - inicio) / 1000);
+                const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+                const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+                const s = String(diff % 60).padStart(2, '0');
+                const txt = `⏱ ${h}:${m}:${s}`;
+                
+                const eMon = document.getElementById(`tMon_${codigo}`);
+                if (eMon) eMon.innerText = txt;
+                const eDas = document.getElementById(`tDas_${codigo}`);
+                if (eDas) eDas.innerText = txt;
+            }
+        }, 1000);
+
+        // --- FUNCIÓN DE AUDITORÍA ---
         const registrarMovimiento = async (codigo, accion) => {
             const session = JSON.parse(localStorage.getItem('agripac_session'));
             const log = {
@@ -50,7 +70,7 @@
             await push(ref(db, 'historial'), log);
         };
 
-        // AUTH
+        // --- AUTH ---
         window.login = async () => {
             const emailInput = document.getElementById('loginUser').value.trim().toLowerCase();
             const passInput = document.getElementById('loginPassword').value.trim();
@@ -89,7 +109,7 @@
             if(el) el.classList.add('tab-active');
         };
 
-        // DASHBOARD
+        // --- DASHBOARD ---
         const moduloDashboard = {
             init: async function() {
                 try {
@@ -116,12 +136,18 @@
                             let statusDesc = "PENDIENTE";
                             let statusColor = "text-slate-400";
                             let bgStatus = "bg-slate-50";
+                            let timerHTML = "";
 
                             if (vReal) {
                                 counts.enPlanta++;
                                 statusDesc = vReal.estado.replace(/_/g,' ');
                                 statusColor = "text-blue-800 font-bold";
                                 bgStatus = "bg-blue-100 border border-blue-200";
+                                
+                                // Inyectar UI del cronómetro en Dashboard
+                                if(vReal.estado === 'CARGANDO' && vReal.inicioCarga) {
+                                    timerHTML = `<br><div id="tDas_${vReal.codigo}" class="text-[9px] font-mono text-orange-600 font-black mt-2 bg-orange-50 inline-block px-2 py-1 rounded shadow-inner">⏱ 00:00:00</div>`;
+                                }
                             } else if (vHist) {
                                 counts.despachadas++;
                                 statusDesc = "DESPACHADO";
@@ -141,6 +167,7 @@
                                         <span class="px-3 py-1 rounded-lg text-[8px] font-black uppercase ${bgStatus} ${statusColor}">
                                             ${statusDesc}
                                         </span>
+                                        ${timerHTML}
                                     </td>
                                 </tr>`;
                         }).join('');
@@ -166,7 +193,7 @@
             }
         };
 
-        // PROCESOS (CORREGIDOS CON REGISTRO DE MOVIMIENTO)
+        // --- PROCESOS CON REGISTRO DE MOVIMIENTO ---
         window.procUpdate = async (id, data) => {
             const vRef = ref(db, `vehiculos/${id}`);
             const snap = await get(vRef);
@@ -245,12 +272,16 @@
             link.click();
         };
 
-        // MONITOR
+        // --- MONITOR DE PATIO ---
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
             const L = { 'secBascula': document.getElementById('lBascula'), 'secDist': document.getElementById('lDist'), 'secCarga': document.getElementById('lCarga'), 'secGaritaOut': document.getElementById('lGaritaOut') };
             let counts = { bascula: 0, dist: 0, carga: 0, out: 0 };
+            
+            // Reiniciamos contadores y registro de cronómetros
+            window.vehiculosCargando = {};
             Object.values(L).forEach(s => s.innerHTML = '');
+
             if (data) {
                 Object.keys(data).forEach(key => {
                     const v = data[key];
@@ -259,14 +290,29 @@
                     if (v.estado.includes('CARGA')) counts.carga++;
                     if (v.estado === 'LISTO_SALIDA') counts.out++;
 
-                    const card = (btn) => `<div class="bg-white border rounded-2xl p-6 mb-4 shadow-sm animate-fade"><span class="text-[9px] font-black text-slate-300 uppercase italic tracking-widest">${v.estado.replace(/_/g,' ')}</span><h3 class="text-2xl font-black text-slate-800 italic">${v.placa}</h3><p class="text-[10px] text-slate-500 font-bold uppercase mb-4 tracking-wider">${v.chofer}</p>${btn}</div>`;
+                    // Registrar vehículo para cronómetro global si está cargando
+                    if (v.estado === 'CARGANDO' && v.inicioCarga) {
+                        window.vehiculosCargando[v.codigo] = v.inicioCarga;
+                    }
+
+                    const timerUI = (v.estado === 'CARGANDO' && v.inicioCarga) ? 
+                        `<div id="tMon_${v.codigo}" class="text-sm font-mono font-black text-orange-600 bg-orange-50 px-3 py-1 rounded-lg inline-block mb-3 border border-orange-200 shadow-inner">⏱ 00:00:00</div>` : '';
+
+                    const card = (btn) => `
+                        <div class="bg-white border rounded-2xl p-6 mb-4 shadow-sm animate-fade">
+                            <span class="block text-[9px] font-black text-slate-300 uppercase italic tracking-widest mb-2">${v.estado.replace(/_/g,' ')}</span>
+                            ${timerUI}
+                            <h3 class="text-2xl font-black text-slate-800 italic leading-none mb-1">${v.placa}</h3>
+                            <p class="text-[10px] text-slate-500 font-bold uppercase mb-5 tracking-wider">${v.chofer}</p>
+                            ${btn}
+                        </div>`;
 
                     if(v.estado === 'PESAJE_ENTRADA') L.secBascula.innerHTML += card(`<button onclick="window.abrirModal('BÁSCULA','PESO ENTRADA', (val)=>window.procUpdate('${key}',{pEntrada:val, estado:'PESAJE_ENTRADA_REGISTRADO'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Registrar Peso</button>`);
                     else if(v.estado === 'PESAJE_ENTRADA_REGISTRADO') L.secDist.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'DIST_DOCS_CARGA'})" class="w-full bg-slate-700 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Carga</button>`);
                     else if(v.estado === 'DIST_DOCS_CARGA') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('CARGA','NÚMERO ANDÉN', (val)=>window.procUpdate('${key}',{anden:val, estado:'CARGA_ASIGNAR_ANDEN'}))" class="w-full bg-slate-800 text-white py-4 rounded-xl font-black text-[10px] uppercase">Asignar Andén</button>`);
                     else if(v.estado === 'CARGA_ASIGNAR_ANDEN') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGA_LISTO_INICIO'})" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Iniciar Carga</button>`);
-                    else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-orange-500 text-white py-4 rounded-xl font-black text-[10px] uppercase italic">EN PROCESO DE CARGA...</button>`);
-                    else if(v.estado === 'CARGANDO') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('CARGA','PRECINTOS', (val)=>window.procUpdate('${key}',{precintos:val, estado:'DIST_DOCS_SALIDA'}))" class="w-full bg-green-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Finalizar</button>`);
+                    else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-orange-500 text-white py-4 rounded-xl font-black text-[10px] uppercase italic animate-pulse">EMPEZAR CRONÓMETRO</button>`);
+                    else if(v.estado === 'CARGANDO') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('CARGA','PRECINTOS', (val)=>window.procUpdate('${key}',{precintos:val, estado:'DIST_DOCS_SALIDA'}))" class="w-full bg-green-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Finalizar Carga</button>`);
                     else if(v.estado === 'DIST_DOCS_SALIDA') L.secDist.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Salida</button>`);
                     else if(v.estado === 'PESAJE_SALIDA') L.secBascula.innerHTML += card(`<button onclick="window.abrirModal('BÁSCULA','PESO SALIDA', (val)=>window.procUpdate('${key}',{pSalida:val, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Peso Salida</button>`);
                     else if(v.estado === 'LISTO_SALIDA') L.secGaritaOut.innerHTML += card(`<button onclick="window.procDelete('${key}')" class="w-full bg-black text-white py-5 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-2xl">Confirmar Salida</button>`);
@@ -315,13 +361,21 @@
 </head>
 <body>
 
-    <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center bg-blue-900">
-        <div class="bg-white p-12 rounded-[3.5rem] shadow-2xl w-full max-w-lg animate-fade">
-            <h2 class="text-5xl font-black text-slate-900 mb-10 italic tracking-tighter">Sign In</h2>
-            <div class="space-y-6">
-                <input type="email" id="loginUser" placeholder="usuario@agripac.com.ec" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-[#003399] text-lg">
-                <input type="password" id="loginPassword" placeholder="Password" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-[#003399] text-lg">
-                <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">Acceder al Patio</button>
+    <div id="loginScreen" class="fixed inset-0 z-[200] flex items-center justify-center">
+        <div class="absolute inset-0 z-0"><img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSq_4295Q0_tW1vA1FqU7S8GqH-zO4-i5Xv2w&s" class="w-full h-full object-cover shadow-inner"><div class="absolute inset-0 bg-blue-950/40"></div></div>
+        <div class="relative z-10 w-full h-full flex items-center p-8 lg:p-20">
+            <div class="w-1/2 text-white hidden lg:block pr-20">
+                <h1 class="text-7xl font-black italic tracking-tighter mb-4 italic">CONTROL DE PATIO <br><span class="text-[#FFB800]">AGRIPAC</span></h1>
+            </div>
+            <div class="w-full lg:w-1/2 flex justify-end">
+                <div class="bg-white p-12 rounded-[3.5rem] shadow-2xl w-full max-w-lg animate-fade">
+                    <h2 class="text-5xl font-black text-slate-900 mb-10 italic tracking-tighter">Sign In</h2>
+                    <div class="space-y-6">
+                        <input type="email" id="loginUser" placeholder="usuario@agripac.com.ec" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-[#003399] text-lg">
+                        <input type="password" id="loginPassword" placeholder="Password" class="w-full p-5 bg-slate-50 border rounded-2xl font-bold outline-none focus:border-[#003399] text-lg">
+                        <button onclick="login()" class="w-full bg-[#003399] text-white py-5 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all">Acceder al Patio</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
