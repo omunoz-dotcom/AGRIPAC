@@ -138,12 +138,27 @@ const moduloDashboard = {
                     const vHist = Object.values(historial).find(v => v.codigo.toUpperCase() === idPlan && v.estado === "SALIDA DEFINITIVA");
                     
                     let statusDesc = "PENDIENTE", statusColor = "text-slate-400", bgStatus = "bg-slate-50";
+                    let timerHTML = "";
 
                     if (vReal) {
                         counts.enPlanta++;
                         statusDesc = vReal.estado.replace(/_/g,' ');
                         statusColor = "text-blue-800 font-bold";
                         bgStatus = "bg-blue-100 border border-blue-200";
+                        
+                        // LÓGICA DEL CRONÓMETRO PARA EL DASHBOARD
+                        if(vReal.estado === 'CARGANDO' && vReal.inicioCarga) {
+                            // Registramos en el objeto global para que el setInterval lo actualice
+                            window.vehiculosCargando[vReal.codigo] = vReal.inicioCarga;
+                            timerHTML = `<br><div id="tDas_${vReal.codigo}" class="text-[9px] font-mono text-orange-600 font-black mt-2 bg-orange-50 inline-block px-2 py-1 rounded shadow-inner animate-pulse">⏱ 00:00:00</div>`;
+                        } else if (vReal.finCarga && vReal.inicioCarga) {
+                            // Tiempo congelado si terminó pero sigue en planta
+                            const diff = Math.floor((vReal.finCarga - vReal.inicioCarga) / 1000);
+                            const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+                            const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+                            const s = String(diff % 60).padStart(2, '0');
+                            timerHTML = `<br><div class="text-[9px] font-mono text-slate-600 font-black mt-2 bg-slate-100 inline-block px-2 py-1 rounded shadow-inner">⏱ ${h}:${m}:${s}</div>`;
+                        }
                     } else if (vHist) {
                         counts.despachadas++;
                         statusDesc = "DESPACHADO";
@@ -172,6 +187,7 @@ const moduloDashboard = {
                                 <span class="px-3 py-1 rounded-lg text-[8px] font-black uppercase ${bgStatus} ${statusColor}">
                                     ${statusDesc}
                                 </span>
+                                ${timerHTML}
                             </td>
                         </tr>`;
                 }).join('');
