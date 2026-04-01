@@ -217,7 +217,7 @@
             } catch (e) { alert("Error: " + e.message); }
         };
 
-        window.registrarIngreso = async (idManual = null) => {
+window.registrarIngreso = async (idManual = null) => {
             const id = idManual || document.getElementById('inputGarita').value.trim().toUpperCase();
             if(!id) return;
             try {
@@ -233,7 +233,12 @@
                 if(f) {
                     const codigo = f[0].trim();
                     await push(vehiculosRef, {
-                        codigo: codigo, placa: f[2].trim(), chofer: f[3].trim(), area: f[8].trim(),
+                        codigo: codigo, 
+                        placa: f[2].trim(), 
+                        chofer: f[3].trim(), 
+                        area: f[8].trim(),
+                        telefono: f[4] ? f[4].trim() : '', // NUEVO: Guardamos el teléfono
+                        ruta: f[1] ? f[1].trim() : '',     // NUEVO: Guardamos la ruta
                         estado: 'PESAJE_ENTRADA', anden: '-', pEntrada:0, pSalida:0, fechaIngreso: new Date().toLocaleString()
                     });
                     await registrarMovimiento(codigo, "INGRESO GARITA");
@@ -272,6 +277,30 @@
             link.click();
         };
 
+// --- FUNCIÓN PARA ENVIAR WHATSAPP (SIN EMOJIS) ---
+        window.enviarWhatsApp = (telefono, chofer, placa, ruta, anden) => {
+            if (!telefono || telefono === '') {
+                alert("El conductor no tiene número de teléfono registrado en la planificación.");
+                return;
+            }
+            
+            // Limpiamos el número y le agregamos el código de Ecuador (593) si empieza con 0
+            let tel = telefono.replace(/\D/g, ''); 
+            if (tel.startsWith('0')) tel = '593' + tel.substring(1);
+            else if (tel.length === 9) tel = '593' + tel; 
+
+            // Construimos el mensaje formal y corporativo
+            const mensaje = `*AGRIPAC - NOTIFICACIÓN DE LOGÍSTICA*\n\n` +
+                            `Estimado/a *${chofer}*,\n\n` +
+                            `Le informamos que su unidad con placa *${placa}* (Destino: ${ruta}) ha sido asignada al *Andén ${anden}*.\n\n` +
+                            `*IMPORTANTE:* Por favor, manténgase en espera en su ubicación actual. El despachador le confirmará en breve el momento exacto en el que deberá acercarse a parquear para iniciar el proceso de carga.\n\n` +
+                            `Atentamente,\nControl de Patio Agripac`;
+
+            // Abrimos WhatsApp Web o la App en una nueva pestaña
+            const url = `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensaje)}`;
+            window.open(url, '_blank');
+        };
+        
         // --- MONITOR DE PATIO ---
         onValue(vehiculosRef, (snapshot) => {
             const data = snapshot.val();
@@ -310,8 +339,15 @@
                     if(v.estado === 'PESAJE_ENTRADA') L.secBascula.innerHTML += card(`<button onclick="window.abrirModal('BÁSCULA','PESO ENTRADA', (val)=>window.procUpdate('${key}',{pEntrada:val, estado:'PESAJE_ENTRADA_REGISTRADO'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Registrar Peso</button>`);
                     else if(v.estado === 'PESAJE_ENTRADA_REGISTRADO') L.secDist.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'DIST_DOCS_CARGA'})" class="w-full bg-slate-700 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Carga</button>`);
                     else if(v.estado === 'DIST_DOCS_CARGA') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('CARGA','NÚMERO ANDÉN', (val)=>window.procUpdate('${key}',{anden:val, estado:'CARGA_ASIGNAR_ANDEN'}))" class="w-full bg-slate-800 text-white py-4 rounded-xl font-black text-[10px] uppercase">Asignar Andén</button>`);
-                    else if(v.estado === 'CARGA_ASIGNAR_ANDEN') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGA_LISTO_INICIO'})" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Iniciar Carga</button>`);
-                    else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-orange-500 text-white py-4 rounded-xl font-black text-[10px] uppercase italic animate-pulse">EMPEZAR CRONÓMETRO</button>`);
+else if(v.estado === 'CARGA_ASIGNAR_ANDEN') L.secCarga.innerHTML += card(`
+                        <button onclick="window.abrirModal('CARGA','NÚMERO ANDÉN', (val) => { 
+                            window.procUpdate('${key}',{anden:val, estado:'CARGA_LISTO_INICIO'});
+                            window.enviarWhatsApp('${v.telefono || ''}', '${v.chofer}', '${v.placa}', '${v.ruta || v.area}', val);
+                        })" class="w-full bg-slate-800 text-white py-4 rounded-xl font-black text-[10px] uppercase">
+                            Asignar Andén y Notificar
+                        </button>
+                    `);
+else if(v.estado === 'CARGA_LISTO_INICIO') L.secCarga.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'CARGANDO', inicioCarga: Date.now()})" class="w-full bg-orange-500 text-white py-4 rounded-xl font-black text-[10px] uppercase italic animate-pulse">EMPEZAR CRONÓMETRO</button>`);
                     else if(v.estado === 'CARGANDO') L.secCarga.innerHTML += card(`<button onclick="window.abrirModal('CARGA','PRECINTOS', (val)=>window.procUpdate('${key}',{precintos:val, estado:'DIST_DOCS_SALIDA'}))" class="w-full bg-green-600 text-white py-4 rounded-xl font-black text-[10px] uppercase">Finalizar Carga</button>`);
                     else if(v.estado === 'DIST_DOCS_SALIDA') L.secDist.innerHTML += card(`<button onclick="window.procUpdate('${key}', {estado:'PESAJE_SALIDA'})" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-[10px] uppercase">Docs Salida</button>`);
                     else if(v.estado === 'PESAJE_SALIDA') L.secBascula.innerHTML += card(`<button onclick="window.abrirModal('BÁSCULA','PESO SALIDA', (val)=>window.procUpdate('${key}',{pSalida:val, estado:'LISTO_SALIDA'}))" class="w-full bg-[#003399] text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg">Peso Salida</button>`);
