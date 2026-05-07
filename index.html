@@ -128,8 +128,7 @@ const filasPlan = csv.split("\n")
         if (!f[5]) return false;
         const fechaCelda = f[5].trim();
  
-        return fechaCelda === fechaHoy || fechaCelda.includes(fechaHoy.replace(/^0/, ''));
-    });
+return fechaCelda.includes(fechaHoy) || fechaCelda.replace(/\/0/g, '/').replace(/^0/, '') === fechaHoy.replace(/\/0/g, '/').replace(/^0/, '');    });
 
                     onValue(ref(db), (snapshot) => {
                         const base = snapshot.val() || {};
