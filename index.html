@@ -121,7 +121,16 @@
 
                     const res = await fetch(URL_SHEET_CSV);
                     const csv = await res.text();
-                    const filasPlan = csv.split("\n").map(r => r.split(",")).slice(1).filter(f => f[5] && f[5].trim() === fechaHoy);
+                    // Busca esta parte en tu código y reemplázala:
+const filasPlan = csv.split("\n")
+    .map(r => r.split(","))
+    .slice(1)
+    .filter(f => {
+        if (!f[5]) return false;
+        const fechaCelda = f[5].trim();
+        // Esto ayudará a que coincida aunque el formato varíe mínimamente
+        return fechaCelda === fechaHoy || fechaCelda.includes(fechaHoy.replace(/^0/, ''));
+    });
 
                     onValue(ref(db), (snapshot) => {
                         const base = snapshot.val() || {};
